@@ -3,9 +3,9 @@
 
 ## Index
 [Members](#Members)  
-[Weekly Progress](#WeeklyProgress)
-[MileStones](#MileStones)
-[Feedbacks](#feedbacks)
+[Weekly Progress](#Weekly-Progress)  
+[MileStones](#MileStones)  
+[Feedbacks](#feedbacks)  
 
 ## Members
 신지용 (https://github.com/JiyongPostech)  
