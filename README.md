@@ -1,6 +1,12 @@
 # Software Designing Final Project  
 2025 Fall CSED332
 
+## Index
+[Members](#Members)  
+[Weekly Progress](#WeeklyProgress)
+[MileStones](#MileStones)
+[Feedbacks](#feedbacks)
+
 ## Members
 신지용 (https://github.com/JiyongPostech)  
 안강현 (https://github.com/gimon0330)  
@@ -31,3 +37,5 @@
 > sorting/partitioning  
 
 ### Milestone #3: master/workers run okay
+
+## Feedbacks
