@@ -14,15 +14,17 @@
 
 ## Weekly Progress
 ### Week 1
-- Scheduling meetings and deciding on the communication platform
-   
-- Task for GanghyeonAn
-  - Studying Important Libraries such as network
-  - Starting off github repository
-    - Setting Milestones
 
-- Studying Parallel Programming
-- Studying 
+- Scheduling meetings and deciding on the communication platform
+
+| Member | Task |
+| --- | --- |
+| ALL |  |
+| GanghyeonAn | - Starting off github repository
+    - Setting Milestones
+- Studying Parallel Programming, Distrubuted sorting |
+| JiyongShin | - Studying Important Libraries such as protobuf |
+| SuminPark | - Studying Important Libraries such as gRPC — Summerize pros and cons |
 
 ### Week 2 (Midterm week)
 ### Week 3
