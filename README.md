@@ -20,7 +20,7 @@
 | Member | Task |
 | --- | --- |
 | ALL |  |
-| GanghyeonAn | - Starting off github repository  - Setting Milestones  - Studying Parallel Programming, Distrubuted sorting |
+| GanghyeonAn | - Starting off github repository<br>     - Setting Milestones<br> - Studying Parallel Programming, Distrubuted sorting |
 | JiyongShin | - Studying Important Libraries such as protobuf |
 | SuminPark | - Studying Important Libraries such as gRPC — Summerize pros and cons |
 
