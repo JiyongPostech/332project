@@ -16,8 +16,8 @@
 ### Week 1
 | Member | Task |
 | --- | --- |
-| ALL | - Scheduling meetings and deciding on the communication platform |
-| GanghyeonAn | - Starting off github repository<br>     - Setting Milestones<br> - Studying Parallel Programming, Distrubuted sorting |
+| ALL | - Scheduling meetings and deciding on the communication platform<br> - Setting Milestones|
+| GanghyeonAn | - Starting off github repository<br> - Studying Parallel Programming, Distrubuted sorting |
 | JiyongShin | - Studying Important Libraries such as protobuf |
 | SuminPark | - Studying Important Libraries such as gRPC — Summerize pros and cons |
 
