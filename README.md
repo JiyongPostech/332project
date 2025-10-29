@@ -23,6 +23,12 @@
 
 ### Week 2 (Midterm week)
 ### Week 3
+| Member | Task |
+| --- | --- |
+| ALL | - Scheduling meetings and deciding on the communication platform<br> - Setting Milestones|
+| GanghyeonAn | - Generate input data using genSort<br> - standardize development environment |
+| JiyongShin | - Setup Network<br> - Implement master-worker server and client<br> - Implement simplest possible communication |
+| SuminPark | - Studying Important Libraries and summerize usage |
 ### Week 4
 ### Week 5 Progress slides deadline (Nov 16 Sunday, 11:59pm)
 ### Week 6 Progress presentation
