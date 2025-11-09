@@ -39,7 +39,7 @@ Milestone #1: 100% completed. (Concept learning, environment setup, data generat
 | JiyongShin | - Designed Master-Worker communication flow (register, status, basic messaging)<br> - Sketched message formats and interfaces | - Implement basic Master/Worker connection & heartbeat<br> - Test multi-Worker connections and simple command flow |
 | SuminPark | - Designed high-level system architecture and module boundaries<br> - Drafted skeleton structure (packages, main classes) | - Apply skeleton structure to repo<br> - Finalize shared interfaces so others can plug in code |  
   
-Milestone #2: Approximately 50–60% completed. (Basic communication design and partial implementation in progress.)
+Milestone #2: Approximately 50–60% completed. (Basic communication design and partial implementation in progress.)  
 Milestone #3: Approximately 30% completed. (System architecture and skeleton code largely defined and partially implemented.)
 ### Week 5 Progress slides deadline (Nov 16 Sunday, 11:59pm)
 ### Week 6 Progress presentation
