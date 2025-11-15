@@ -35,6 +35,71 @@ class MasterCoordinator(masterNet: MasterService, sendCtl: ControlSender) {
     TaskAssigner.assignAll(job, workers.values.toSeq, sendCtl, onTaskProgress, onTaskFinished, onTaskFailed)
   }
 
+  /**
+   * 초기 데이터를 워커들에게 분배
+   * @param dataFilePath 분배할 데이터 파일 경로
+   */
+  def distributeInitialData(dataFilePath: String): Unit = {
+    if (workers.isEmpty) {
+      println("[MasterCoordinator] No workers available for data distribution")
+      return
+    }
+
+    try {
+      // 1. 파일에서 데이터 읽기
+      val source = scala.io.Source.fromFile(dataFilePath)
+      val allData = try {
+        source.getLines()
+          .map(_.trim)
+          .filter(_.nonEmpty)
+          .map(_.toLong)
+          .toSeq
+      } finally {
+        source.close()
+      }
+
+      if (allData.isEmpty) {
+        println("[MasterCoordinator] No data to distribute")
+        return
+      }
+
+      println(s"[MasterCoordinator] Distributing ${allData.size} items to ${workers.size} workers")
+
+      // 2. 워커 수만큼 균등 분할
+      val workerList = workers.values.toSeq.sortBy(_.id)
+      val chunkSize = math.ceil(allData.size.toDouble / workerList.size).toInt
+      
+      // 3. 각 워커에게 데이터 청크 전송
+      workerList.zipWithIndex.foreach { case (worker, idx) =>
+        val start = idx * chunkSize
+        val end = math.min(start + chunkSize, allData.size)
+        val chunk = allData.slice(start, end)
+        
+        if (chunk.nonEmpty) {
+          val message = s"INITIAL_DATA:${chunk.mkString(",")}\n"
+          sendCtl match {
+            case netCtl: NetControlSender =>
+              // NetControlSender를 통해 전송
+              masterNet match {
+                case netty: NettyMasterService =>
+                  netty.sendToWorker(worker.id, message)
+                  println(s"[MasterCoordinator] Sent ${chunk.size} items to Worker ${worker.id}")
+                case _ =>
+              }
+            case _ =>
+          }
+        }
+      }
+
+      println("[MasterCoordinator] Initial data distribution complete")
+
+    } catch {
+      case e: Exception =>
+        println(s"[MasterCoordinator] Error during data distribution: ${e.getMessage}")
+        e.printStackTrace()
+    }
+  }
+
   /** 태스크 진행/완료/실패 콜백 */
   private def onTaskProgress(jobId: String, taskId: String, pct: Int): Unit = {
     jobStates.get(jobId).foreach(_.progress.update(taskId, pct))

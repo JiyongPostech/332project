@@ -1,4 +1,4 @@
-    package master
+package master
 
 import common._
 

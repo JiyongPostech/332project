@@ -26,3 +26,10 @@ object TaskResult {
   final case class Success(outputs: Seq[String]) extends TaskResult
   final case class Failure(reason: String)       extends TaskResult
 }
+
+/** 키 범위 정보 (어떤 워커가 어떤 범위를 담당하는지) */
+final case class KeyRange(
+  workerId: Int,
+  minKey: Long,
+  maxKey: Long
+)

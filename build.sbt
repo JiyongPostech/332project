@@ -19,4 +19,7 @@ libraryDependencies ++= Seq(
   // ScalaPB runtime (+ gRPC)
   "com.thesamet.scalapb" %% "scalapb-runtime"      % scalapb.compiler.Version.scalapbVersion % "protobuf",
   "com.thesamet.scalapb" %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
+
+  // Netty (독립적인 네트워크 계층 구현을 위해)
+  "io.netty" % "netty-all" % "4.1.100.Final"
 )
