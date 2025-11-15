@@ -7,8 +7,7 @@ import scala.collection.mutable
 /** 워커 프로세스의 생명주기/이벤트 루프 */
 class WorkerRuntime(
   id: Int,
-  net: NetworkService,
-  exec: TaskExecutor
+  net: NetworkService
 ) {
   
   // 데이터 처리 모듈
@@ -20,11 +19,11 @@ class WorkerRuntime(
   private val receivedData = mutable.ArrayBuffer[Long]()
   private var keyRanges: Seq[KeyRange] = Seq.empty
   
-  // 동기화를 위한 래치들
+  // 동기화를 위한 플래그들 (재사용 가능하도록 volatile boolean 사용)
   @volatile private var initialDataReceived = false
   @volatile private var keyRangeReceived = false
-  private val keyRangeLatch = new java.util.concurrent.CountDownLatch(1)
-  private val initialDataLatch = new java.util.concurrent.CountDownLatch(1)
+  private val keyRangeLock = new Object()
+  private val initialDataLock = new Object()
   
   // Shuffle 데이터 수신 추적
   @volatile private var expectedShuffleMessages = 0
@@ -143,8 +142,10 @@ class WorkerRuntime(
   /** 마스터로부터 KEYRANGE 수신 (TCP 경로) */
   private def onKeyRangeFromMaster(ranges: Seq[(Int, Long, Long)]): Unit = {
     keyRanges = ranges.map { case (wid, minK, maxK) => KeyRange(wid, minK, maxK) }
-    keyRangeReceived = true
-    keyRangeLatch.countDown()
+    keyRangeLock.synchronized {
+      keyRangeReceived = true
+      keyRangeLock.notifyAll()
+    }
     println(s"[Worker $id] KEYRANGE from master: ${keyRanges.mkString(", ")}")
   }
   
@@ -154,8 +155,10 @@ class WorkerRuntime(
       val dataStr = message.stripPrefix("INITIAL_DATA:").trim
       val data = parseData(dataStr)
       receivedData ++= data
-      initialDataReceived = true
-      initialDataLatch.countDown()
+      initialDataLock.synchronized {
+        initialDataReceived = true
+        initialDataLock.notifyAll()
+      }
       println(s"[Worker $id] Received ${data.size} initial data items from Master (TCP)")
     }
   }
@@ -166,10 +169,19 @@ class WorkerRuntime(
    * @return 성공 여부
    */
   def waitForKeyRange(timeoutSeconds: Long = 10): Boolean = {
-    try {
-      keyRangeLatch.await(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
-    } catch {
-      case _: InterruptedException => false
+    val deadline = System.currentTimeMillis() + timeoutSeconds * 1000
+    keyRangeLock.synchronized {
+      while (!keyRangeReceived && System.currentTimeMillis() < deadline) {
+        val remaining = deadline - System.currentTimeMillis()
+        if (remaining > 0) {
+          try {
+            keyRangeLock.wait(remaining)
+          } catch {
+            case _: InterruptedException => return false
+          }
+        }
+      }
+      keyRangeReceived
     }
   }
   
@@ -179,10 +191,19 @@ class WorkerRuntime(
    * @return 성공 여부
    */
   def waitForInitialData(timeoutSeconds: Long = 10): Boolean = {
-    try {
-      initialDataLatch.await(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
-    } catch {
-      case _: InterruptedException => false
+    val deadline = System.currentTimeMillis() + timeoutSeconds * 1000
+    initialDataLock.synchronized {
+      while (!initialDataReceived && System.currentTimeMillis() < deadline) {
+        val remaining = deadline - System.currentTimeMillis()
+        if (remaining > 0) {
+          try {
+            initialDataLock.wait(remaining)
+          } catch {
+            case _: InterruptedException => return false
+          }
+        }
+      }
+      initialDataReceived
     }
   }
   
@@ -190,23 +211,6 @@ class WorkerRuntime(
    * 수신한 데이터 가져오기
    */
   def getReceivedData: Seq[Long] = receivedData.toSeq
-
-  /** 마스터로부터 태스크 할당 수신 시 호출(네트워크 계층에서 라우팅) */
-  def onAssign(msg: ControlMessage.AssignTask): Unit = {
-    report(ControlMessage.TaskProgress(msg.jobId, msg.task.id, 0))
-    val result = exec.run(msg.task) // 실제 파이프라인 로직은 다음 마일스톤에서 구현
-    result match {
-      case TaskResult.Success(out) =>
-        report(ControlMessage.TaskFinished(msg.jobId, msg.task.id, out))
-      case TaskResult.Failure(reason) =>
-        report(ControlMessage.TaskFailed(msg.jobId, msg.task.id, reason))
-    }
-  }
-
-  /** 진행/완료/실패 보고 (네트워크 계층으로 전달) */
-  private def report(msg: ControlMessage): Unit = {
-    // net.send(...) 또는 별도의 제어 채널로 전송하도록 확장
-  }
   
   // === 외부에서 호출 가능한 파이프라인 함수들 ===
   

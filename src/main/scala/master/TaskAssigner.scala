@@ -8,10 +8,7 @@ object TaskAssigner {
   def assignAll(
     job: Job,
     workers: Seq[WorkerInfo],
-    ctl: ControlSender,
-    onProgress: (String, String, Int) => Unit,
-    onFinish: (String, String, Seq[String]) => Unit,
-    onFail: (String, String, String) => Unit
+    ctl: ControlSender
   ): Unit = {
     require(workers.nonEmpty, "No workers to assign tasks.")
 
@@ -20,7 +17,6 @@ object TaskAssigner {
       val w = workers(i % workers.size)
       i += 1
       ctl.sendAssign(w.id, ControlMessage.AssignTask(job.id, t))
-      // 워커 측에서 Progress/Finish/Fail이 들어오면 위 콜백으로 연결될 예정
     }
   }
 }

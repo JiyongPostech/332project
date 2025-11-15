@@ -34,6 +34,8 @@ private class NettyMasterState {
   val samples: mutable.ArrayBuffer[Long] = mutable.ArrayBuffer.empty[Long]
   // 각 워커로부터 받은 정렬된 데이터 청크
   val sortedChunks: TrieMap[Int, mutable.ArrayBuffer[Long]] = TrieMap[Int, mutable.ArrayBuffer[Long]]()
+  // 청크 수신 추적: workerId -> (totalCount, receivedCount)
+  val chunkTracking: TrieMap[Int, (Int, Int)] = TrieMap[Int, (Int, Int)]()
   
   // 비즈니스 로직 콜백 (MasterCoordinator 연결용)
   var onWorkerRegisteredCallback: Option[common.WorkerInfo => Unit] = None
@@ -78,27 +80,34 @@ private class NettyMasterHandler(state: NettyMasterState) extends SimpleChannelI
           val parts = body.split(":", 4)
           if (parts.length >= 3) {
             state.channelToIdMap.get(ctx.channel).foreach { wid =>
-              val minV = parts(0).toLong
-              val maxV = parts(1).toLong
-              val cnt  = parts(2).toInt
-              state.analysisResults.put(wid, (minV, maxV, cnt))
-
-              // 샘플 파싱 및 축적 (옵션 필드)
-              if (parts.length == 4 && parts(3).nonEmpty) {
-                parts(3).split(",").filter(_.nonEmpty).foreach { s =>
-                  try state.samples += s.toLong catch { case _: Throwable => () }
+              state.synchronized {
+                // 첫 번째 워커의 분석 결과 수신 시 샘플 버퍼 초기화
+                if (state.analysisResults.isEmpty) {
+                  state.samples.clear()
                 }
-              }
+                
+                val minV = parts(0).toLong
+                val maxV = parts(1).toLong
+                val cnt  = parts(2).toInt
+                state.analysisResults.put(wid, (minV, maxV, cnt))
 
-              // 모든 등록 워커의 분석이 도착했으면 키 범위 계산 후 브로드캐스트
-              if (state.peerMap.nonEmpty && state.analysisResults.keySet == state.peerMap.keySet) {
-                val globalMin = state.analysisResults.values.map(_._1).min
-                val globalMax = state.analysisResults.values.map(_._2).max
-                val workers = state.peerMap.keys.toSeq.sorted
-                val ranges = computeQuantileRanges(globalMin, globalMax, workers, state.samples.toSeq)
-                val msgStr = Codec.encodeMessage(KeyRangeUpdate(ranges))
-                state.allClients.writeAndFlush(msgStr)
-                state.samples.clear()
+                // 샘플 파싱 및 축적 (옵션 필드)
+                if (parts.length == 4 && parts(3).nonEmpty) {
+                  parts(3).split(",").filter(_.nonEmpty).foreach { s =>
+                    try state.samples += s.toLong catch { case _: Throwable => () }
+                  }
+                }
+
+                // 모든 등록 워커의 분석이 도착했으면 키 범위 계산 후 브로드캐스트
+                if (state.peerMap.nonEmpty && state.analysisResults.keySet == state.peerMap.keySet) {
+                  val globalMin = state.analysisResults.values.map(_._1).min
+                  val globalMax = state.analysisResults.values.map(_._2).max
+                  val workers = state.peerMap.keys.toSeq.sorted
+                  val ranges = computeQuantileRanges(globalMin, globalMax, workers, state.samples.toSeq)
+                  val msgStr = Codec.encodeMessage(KeyRangeUpdate(ranges))
+                  state.allClients.writeAndFlush(msgStr)
+                  state.samples.clear()
+                }
               }
             }
           }
@@ -113,11 +122,26 @@ private class NettyMasterHandler(state: NettyMasterState) extends SimpleChannelI
             val dataStr = parts(3)
             val data = if (dataStr.nonEmpty) dataStr.split(",").map(_.toLong).toSeq else Seq.empty
             
+            // 데이터 축적
             state.sortedChunks.getOrElseUpdate(workerId, mutable.ArrayBuffer.empty) ++= data
-            println(s"마스터: 워커 $workerId 로부터 청크 $chunkIdx 수신 (${data.size}개)")
             
-            // 모든 워커의 정렬 데이터가 도착했는지 확인
-            if (state.peerMap.nonEmpty && state.sortedChunks.keySet == state.peerMap.keySet) {
+            // 청크 추적 업데이트
+            val (prevTotal, prevCount) = state.chunkTracking.getOrElse(workerId, (totalCount, 0))
+            val newCount = prevCount + 1
+            state.chunkTracking.put(workerId, (totalCount, newCount))
+            
+            println(s"마스터: 워커 $workerId 로부터 청크 $chunkIdx 수신 (${data.size}개, 총 ${state.sortedChunks(workerId).size}/$totalCount)")
+            
+            // 모든 워커의 모든 청크가 도착했는지 확인
+            val allWorkersPresent = state.peerMap.nonEmpty && state.sortedChunks.keySet == state.peerMap.keySet
+            val allChunksReceived = state.chunkTracking.nonEmpty && state.chunkTracking.forall { case (wid, (totalCount, receivedCount)) =>
+              // 실제 받은 데이터 크기가 선언된 총 개수와 일치하는지 확인
+              state.sortedChunks.get(wid).exists { chunks =>
+                chunks.size == totalCount && receivedCount == math.ceil(totalCount.toDouble / 1000).toInt
+              }
+            }
+            
+            if (allWorkersPresent && allChunksReceived) {
               // K-way 병합 수행
               val mergedData = mergeKSortedArrays(state.sortedChunks.values.map(_.toSeq).toSeq)
               println(s"마스터: 최종 병합 완료 (총 ${mergedData.size}개)")
@@ -137,7 +161,9 @@ private class NettyMasterHandler(state: NettyMasterState) extends SimpleChannelI
                   println(s"결과 저장 실패: ${e.getMessage}")
               }
               
+              // 정리
               state.sortedChunks.clear()
+              state.chunkTracking.clear()
             }
           }
         } else {

@@ -20,11 +20,8 @@ object Launcher {
       masterPort
     )
 
-    // 2) 실행기(모듈 호출 래퍼) 준비
-    val exec = new NoopTaskExecutor() // TODO: 이후 sample/partition/merge/sort 주입
-
-    // 3) 런타임 구성 및 시작
-    val runtime = new WorkerRuntime(workerId, net, exec)
+    // 2) 런타임 구성 및 시작
+    val runtime = new WorkerRuntime(workerId, net)
     runtime.start()
     
     println(s"[Worker $workerId] Started and connected to master")
