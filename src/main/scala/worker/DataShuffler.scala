@@ -36,7 +36,7 @@ class DataShuffler(
     keyRanges.foreach { range =>
       if (range.workerId != myWorkerId) {
         val values = dataByWorker.getOrElse(range.workerId, mutable.ArrayBuffer.empty)
-        sendDataToWorker(range.workerId, values)
+        sendDataToWorker(range.workerId, values.toSeq)
       }
     }
 

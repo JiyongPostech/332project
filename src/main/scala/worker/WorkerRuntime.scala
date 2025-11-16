@@ -28,7 +28,6 @@ class WorkerRuntime(
   // Shuffle 데이터 수신 추적
   @volatile private var expectedShuffleMessages = 0
   @volatile private var receivedShuffleMessages = 0
-  private val shuffleLatch = new java.util.concurrent.CountDownLatch(1)
 
   /** 시작: 마스터에 등록, 제어 메시지 수신 바인딩 */
   def start(): Unit = {
@@ -112,17 +111,30 @@ class WorkerRuntime(
   }
   
   /**
-   * 다른 워커에게 데이터 전송
+   * 다른 워커에게 데이터 전송 (내부용)
    */
   private def sendData(targetWorkerId: Int, message: String): Unit = {
     net.send(targetWorkerId, message)
   }
   
   /**
+   * 리시버가 다른 워커에게 데이터를 전송할 때 사용하는 public 함수
+   * @param targetWorkerId 대상 워커 ID
+   * @param dataType 데이터 타입 (0: 정렬, 1: 분석)
+   * @param data 전송할 데이터
+   */
+  def sendDataToWorker(targetWorkerId: Int, dataType: Int, data: Seq[Long]): Unit = {
+    val typePrefix = if (dataType == 0) "DATA" else "ANALYZE"
+    val message = s"$typePrefix:${data.mkString(",")}"
+    net.send(targetWorkerId, message)
+    println(s"[Worker $id] Sent ${data.size} items (type=$dataType) to Worker $targetWorkerId")
+  }
+  
+  /**
    * 마스터에게 분석 결과 전송
    */
   def sendAnalysisToMaster(result: AnalysisResult): Unit = {
-    val message = s"ANALYSIS:${result.minValue}:${result.maxValue}:${result.count}:${result.samples.mkString(",") }"
+    val message = s"ANALYSIS:${result.minValue}:${result.maxValue}:${result.count}:${result.samples.mkString(",")}"
     net.send_to_master(message)
     println(s"[Worker $id] Sent analysis result to Master (TCP)")
   }
@@ -213,6 +225,24 @@ class WorkerRuntime(
   def getReceivedData: Seq[Long] = receivedData.toSeq
   
   // === 외부에서 호출 가능한 파이프라인 함수들 ===
+  
+  /**
+   * 외부 리시버가 데이터를 받아서 정렬/분석 함수에 넘길 때 호출
+   * @param dataType 0: 정렬, 1: 분석
+   * @param data 데이터 시퀀스
+   */
+  def receiveData(dataType: Int, data: Seq[Long]): Unit = {
+    dataType match {
+      case 0 => // 정렬 데이터
+        sorter.insertAll(data)
+        println(s"[Worker $id] Received ${data.size} items for sorting (receiver)")
+      case 1 => // 분석 데이터
+        receivedData ++= data
+        println(s"[Worker $id] Received ${data.size} items for analysis (receiver)")
+      case _ =>
+        println(s"[Worker $id] Unknown dataType: $dataType")
+    }
+  }
   
   /**
    * 1단계: 데이터 분석
