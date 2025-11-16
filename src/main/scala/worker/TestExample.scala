@@ -10,6 +10,8 @@ import scala.collection.mutable
  * 1. 이 파일을 실행하여 독립적으로 테스트
  * 2. 리시버 구현 시 참고용 예시로 활용
  */
+
+
 object TestExample {
   
   def main(args: Array[String]): Unit = {
@@ -27,6 +29,11 @@ object TestExample {
     
     // 테스트 시나리오 3: 워커 간 데이터 전송 시뮬레이션
     testWorkerCommunication()
+    
+    println("\n" + "="*80 + "\n")
+    
+    // 테스트 시나리오 4: 실제 분산 정렬 전체 파이프라인
+    testFullDistributedSortingPipeline()
   }
   
   /**
@@ -114,6 +121,171 @@ object TestExample {
     val sortedInWorker2 = worker2.runSort()
     println(s"[Worker 2] 정렬 완료: $sortedInWorker2")
   }
+  
+  /**
+   * 시나리오 4: 실제 분산 정렬 전체 파이프라인 시뮬레이션
+   * 마스터 데이터 분배 → 각 워커 분석 → 키 범위 계산 → Shuffle → 정렬 → 병합
+   */
+  def testFullDistributedSortingPipeline(): Unit = {
+    println("### Test 4: 전체 분산 정렬 파이프라인 시뮬레이션 ###\n")
+    
+    // ========== 0단계: 마스터 데이터 준비 ==========
+    println("━━━━━ 0단계: 마스터가 초기 데이터 준비 ━━━━━")
+    val masterData = Seq(
+      95L, 23L, 67L, 41L, 88L, 12L, 76L, 34L, 59L, 82L,
+      15L, 48L, 91L, 27L, 63L, 39L, 74L, 56L, 85L, 19L
+    )
+    println(s"[마스터] 전체 데이터 (${masterData.size}개): ${masterData.sorted}")
+    println(s"[마스터] 3개 워커에게 균등 분배 시작...\n")
+    
+    // ========== 1단계: 마스터가 워커들에게 데이터 분배 ==========
+    println("━━━━━ 1단계: 데이터 분배 ━━━━━")
+    val worker1 = new WorkerRuntime(1, new MockNetworkService())
+    val worker2 = new WorkerRuntime(2, new MockNetworkService())
+    val worker3 = new WorkerRuntime(3, new MockNetworkService())
+    
+    val chunk1 = masterData.slice(0, 7)
+    val chunk2 = masterData.slice(7, 14)
+    val chunk3 = masterData.slice(14, 20)
+    
+    println(s"[마스터 → Worker 1] ${chunk1.size}개: $chunk1")
+    worker1.receiveData(1, chunk1)
+    
+    println(s"[마스터 → Worker 2] ${chunk2.size}개: $chunk2")
+    worker2.receiveData(1, chunk2)
+    
+    println(s"[마스터 → Worker 3] ${chunk3.size}개: $chunk3")
+    worker3.receiveData(1, chunk3)
+    
+    // ========== 2단계: 각 워커가 로컬 분석 수행 ==========
+    println("\n━━━━━ 2단계: 각 워커 데이터 분석 ━━━━━")
+    val analysis1 = worker1.runAnalysisFromReceivedData()
+    println(s"[Worker 1] 분석: min=${analysis1.minValue}, max=${analysis1.maxValue}, count=${analysis1.count}")
+    
+    val analysis2 = worker2.runAnalysisFromReceivedData()
+    println(s"[Worker 2] 분석: min=${analysis2.minValue}, max=${analysis2.maxValue}, count=${analysis2.count}")
+    
+    val analysis3 = worker3.runAnalysisFromReceivedData()
+    println(s"[Worker 3] 분석: min=${analysis3.minValue}, max=${analysis3.maxValue}, count=${analysis3.count}")
+    
+    // ========== 3단계: 마스터가 키 범위 계산 및 브로드캐스트 ==========
+    println("\n━━━━━ 3단계: 마스터가 키 범위 계산 ━━━━━")
+    val globalMin = Seq(analysis1, analysis2, analysis3).map(_.minValue).min
+    val globalMax = Seq(analysis1, analysis2, analysis3).map(_.maxValue).max
+    
+    println(s"[마스터] 전역 범위: min=$globalMin, max=$globalMax")
+    
+    // 균등 분할 (실제는 샘플 기반 분위수)
+    val range = globalMax - globalMin + 1
+    val rangePerWorker = (range + 2) / 3
+    
+    val keyRanges = Seq(
+      common.KeyRange(1, globalMin, globalMin + rangePerWorker - 1),
+      common.KeyRange(2, globalMin + rangePerWorker, globalMin + 2 * rangePerWorker - 1),
+      common.KeyRange(3, globalMin + 2 * rangePerWorker, globalMax)
+    )
+    
+    println(s"[마스터] 키 범위 배정:")
+    keyRanges.foreach { kr =>
+      println(s"  Worker ${kr.workerId}: [${kr.minKey} ~ ${kr.maxKey}]")
+    }
+    
+    // 워커들에게 키 범위 전달 (실제는 TCP 메시지)
+    keyRanges.foreach { kr =>
+      if (kr.workerId == 1) simulateKeyRangeUpdate(worker1, keyRanges)
+      else if (kr.workerId == 2) simulateKeyRangeUpdate(worker2, keyRanges)
+      else if (kr.workerId == 3) simulateKeyRangeUpdate(worker3, keyRanges)
+    }
+    
+    // ========== 4단계: 데이터 재분배 (Shuffle) ==========
+    println("\n━━━━━ 4단계: 데이터 Shuffle (재분배) ━━━━━")
+    
+    val data1 = worker1.getReceivedData
+    val data2 = worker2.getReceivedData
+    val data3 = worker3.getReceivedData
+    
+    println(s"[Worker 1] Shuffle 전 데이터: $data1")
+    println(s"[Worker 2] Shuffle 전 데이터: $data2")
+    println(s"[Worker 3] Shuffle 전 데이터: $data3")
+    
+    // 각 워커가 데이터를 키 범위에 따라 재분배
+    val shuffleResult = performManualShuffle(
+      Seq((1, data1), (2, data2), (3, data3)),
+      keyRanges
+    )
+    
+    println(s"\n[Shuffle 결과]")
+    shuffleResult.foreach { case (wid, data) =>
+      println(s"  Worker ${wid}로 전달된 데이터 (${data.size}개): ${data.sorted}")
+    }
+    
+    // 워커들에게 shuffle된 데이터 전달
+    shuffleResult.foreach { case (wid, data) =>
+      val worker = if (wid == 1) worker1 else if (wid == 2) worker2 else worker3
+      worker.receiveData(0, data)
+    }
+    
+    // ========== 5단계: 각 워커가 로컬 정렬 ==========
+    println("\n━━━━━ 5단계: 각 워커 로컬 정렬 ━━━━━")
+    val sorted1 = worker1.runSort()
+    println(s"[Worker 1] 정렬 완료 (${sorted1.size}개): $sorted1")
+    
+    val sorted2 = worker2.runSort()
+    println(s"[Worker 2] 정렬 완료 (${sorted2.size}개): $sorted2")
+    
+    val sorted3 = worker3.runSort()
+    println(s"[Worker 3] 정렬 완료 (${sorted3.size}개): $sorted3")
+    
+    // ========== 6단계: 마스터가 최종 병합 ==========
+    println("\n━━━━━ 6단계: 마스터가 최종 병합 ━━━━━")
+    val finalResult = sorted1 ++ sorted2 ++ sorted3
+    
+    println(s"[마스터] 최종 병합 결과 (${finalResult.size}개):")
+    println(s"        $finalResult")
+    
+    // 검증
+    println(s"\n[검증]")
+    println(s"  원본 정렬: ${masterData.sorted}")
+    println(s"  결과 정렬: $finalResult")
+    println(s"  정렬 성공: ${masterData.sorted == finalResult}")
+  }
+  
+  /**
+   * 키 범위 업데이트 시뮬레이션 (실제는 네트워크 메시지)
+   */
+  private def simulateKeyRangeUpdate(worker: WorkerRuntime, ranges: Seq[common.KeyRange]): Unit = {
+    // WorkerRuntime의 private 메서드를 호출할 수 없으므로 직접 처리
+    // 실제로는 onKeyRangeFromMaster 콜백이 호출됨
+  }
+  
+  /**
+   * 수동으로 Shuffle 수행 (실제는 워커들이 P2P로 전송)
+   */
+  private def performManualShuffle(
+    workerData: Seq[(Int, Seq[Long])],
+    keyRanges: Seq[common.KeyRange]
+  ): Map[Int, Seq[Long]] = {
+    import scala.collection.mutable
+    
+    val result = mutable.Map[Int, mutable.ArrayBuffer[Long]](
+      1 -> mutable.ArrayBuffer.empty,
+      2 -> mutable.ArrayBuffer.empty,
+      3 -> mutable.ArrayBuffer.empty
+    )
+    
+    workerData.foreach { case (fromWorker, data) =>
+      data.foreach { value =>
+        // 이 값이 어느 워커의 범위에 속하는지 찾기
+        val targetWorker = keyRanges.find { kr =>
+          value >= kr.minKey && value <= kr.maxKey
+        }.map(_.workerId).getOrElse(1)
+        
+        result(targetWorker) += value
+      }
+    }
+    
+    result.view.mapValues(_.toSeq).toMap
+  }
 }
 
 /**
@@ -155,3 +327,5 @@ class MockNetworkService extends network.NetworkService {
   def getSentMessages: Seq[(Int, String)] = sentMessages.toSeq
   def getMasterMessages: Seq[String] = masterMessages.toSeq
 }
+
+
