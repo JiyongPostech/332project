@@ -1,3 +1,4 @@
+// src/main/scala/worker/TestExample.scala
 package worker
 
 import scala.collection.mutable
@@ -5,8 +6,7 @@ import scala.collection.mutable
 /**
  * 테스트용 예시 코드
  * 네트워크 없이 WorkerRuntime의 receiveData와 sendDataToWorker 함수를 테스트합니다.
- * 
- * 사용 방법:
+ * * 사용 방법:
  * 1. 이 파일을 실행하여 독립적으로 테스트
  * 2. 리시버 구현 시 참고용 예시로 활용
  */
@@ -111,11 +111,14 @@ object TestExample {
     val dataForWorker2 = Seq(100L, 200L, 300L)
     println(s"[Worker 1] Worker 2에게 전송할 데이터: $dataForWorker2")
     
-    // Worker 1이 Worker 2에게 정렬 데이터 전송 (dataType=0)
-    worker1.sendDataToWorker(targetWorkerId = 2, dataType = 0, dataForWorker2)
+    // [수정 3] Worker 1이 Worker 2에게 정렬 데이터 전송
+    // 'sendDataToWorker' 대신 MockNetworkService의 'send'를 직접 호출
+    val payload = dataForWorker2.mkString(",")
+    mockNet1.send(targetId = 2, message = payload)
     
     // Worker 2가 수신했다고 시뮬레이션
     println("[Worker 2] 데이터 수신 중...")
+    // (수정) onPeerMessage가 payload를 받으므로 dataType=0으로 receiveData 호출
     worker2.receiveData(dataType = 0, dataForWorker2)
     
     val sortedInWorker2 = worker2.runSort()
@@ -256,6 +259,7 @@ object TestExample {
   private def simulateKeyRangeUpdate(worker: WorkerRuntime, ranges: Seq[common.KeyRange]): Unit = {
     // WorkerRuntime의 private 메서드를 호출할 수 없으므로 직접 처리
     // 실제로는 onKeyRangeFromMaster 콜백이 호출됨
+    // 이 테스트는 onKeyRangeFromMaster를 직접 테스트하지 않으므로 비워둠
   }
   
   /**
@@ -327,5 +331,3 @@ class MockNetworkService extends network.NetworkService {
   def getSentMessages: Seq[(Int, String)] = sentMessages.toSeq
   def getMasterMessages: Seq[String] = masterMessages.toSeq
 }
-
-

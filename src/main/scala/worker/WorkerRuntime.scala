@@ -1,10 +1,11 @@
+// src/main/scala/worker/WorkerRuntime.scala
 package worker
 
 import common._
 import network._
 import scala.collection.mutable
 
-/** 워커 프로세스의 생명주기/이벤트 루프 */
+/** 워커 프로세스의 생명주기/이벤트 루프 (수정) */
 class WorkerRuntime(
   id: Int,
   net: NetworkService
@@ -12,6 +13,7 @@ class WorkerRuntime(
   
   // 데이터 처리 모듈
   private val analyzer = new DataAnalyzer()
+  // (수정) DataShuffler에 sendData 함수 (순수 payload 전송) 전달
   private val shuffler = new DataShuffler(id, sendData)
   private val sorter = new DataSorter()
   
@@ -31,68 +33,48 @@ class WorkerRuntime(
 
   /** 시작: 마스터에 등록, 제어 메시지 수신 바인딩 */
   def start(): Unit = {
-    // P2P 메시지 수신(데이터 평면)은 이후 필요 시 bind 사용
+    // 1. P2P (UDP) 메시지 수신 콜백 등록
+    // onPeerMessage는 이제 Netty의 "Receive 스레드"가 호출 (I/O 스레드 X)
     net.bind(onPeerMessage)
-    // 마스터 접속 및 컨트롤 메시지 콜백 연결은 네트워크 계층 확장 시 주입 예정
-    net.connect_to_master(onInitialPeers, onPeerJoined, onPeerLeft, onKeyRangeFromMaster, onInitialDataFromMaster)
-    // 별도: 등록 메시지 전송(프로토콜은 ControlMessage.RegisterWorker 등으로 통일)
+    
+    // 2. 마스터 (TCP) 연결 (기존 콜백 유지)
+    net.connect_to_master(
+      onInitialPeers, 
+      onPeerJoined, 
+      onPeerLeft, 
+      onKeyRangeFromMaster, 
+      onInitialDataFromMaster
+    )
   }
 
   /** 안전 종료 */
   def stop(): Unit = net.stop()
 
   /**
-   * P2P 메시지 수신 콜백
-   * 데이터 타입에 따라 적절한 처리 수행
-   * 메시지 형식: "TYPE:DATA"
-   * - INITIAL_DATA:value1,value2,... (마스터로부터 초기 데이터)
-   * - ANALYZE:value1,value2,... (분석용 데이터)
-   * - DATA:value1,value2,... (정렬용 데이터)
-   * - KEYRANGE:workerId:minKey:maxKey,... (키 범위 정보)
+   * P2P 메시지 수신 콜백 (수정)
+   * - 이 함수는 Netty의 "Receive 스레드"에 의해 호출됨 (I/O 스레드 아님)
+   * - msg 파라미터는 "DATA:"가 없는 순수 payload (예: "100,200,300")
    */
   private def onPeerMessage(senderId: Int, msg: String): Unit = {
-    val parts = msg.split(":", 2)
-    if (parts.length < 2) return
-    
-    parts(0) match {
-      case "INITIAL_DATA" =>
-        // 마스터로부터 초기 데이터 수신
-        val data = parseData(parts(1))
-        receivedData ++= data
-        initialDataReceived = true
-        println(s"[Worker $id] Received ${data.size} initial data items from Master")
-        
-      case "ANALYZE" =>
-        // 분석용 데이터 수신
-        val data = parseData(parts(1))
-        receivedData ++= data
-        println(s"[Worker $id] Received ${data.size} items for analysis from $senderId")
-        
-      case "DATA" =>
-        // 정렬용 데이터 수신 (Shuffle 단계)
-        val data = shuffler.parseReceivedData(msg)
-        sorter.insertAll(data)
-        receivedShuffleMessages += 1
-        println(s"[Worker $id] Received ${data.size} items for sorting from $senderId ($receivedShuffleMessages/$expectedShuffleMessages)")
-        
-        // 모든 shuffle 데이터 수신 완료 확인
-        if (expectedShuffleMessages > 0 && receivedShuffleMessages >= expectedShuffleMessages) {
-          println(s"[Worker $id] All shuffle data received")
-          // 래치는 이미 카운트가 0이면 countDown 호출이 무시됨
-        }
-        
-      case "KEYRANGE" =>
-        // 키 범위 정보 수신
-        keyRanges = parseKeyRanges(parts(1))
-        println(s"[Worker $id] Received key ranges: $keyRanges")
-        
-      case _ =>
-        println(s"[Worker $id] Unknown message type from $senderId: ${parts(0)}")
+    try {
+      // (수정) "DATA:" 접두사 체크 없이, 순수 payload만 처리
+      val data = parseData(msg) // 내부 parseData 사용
+      sorter.insertAll(data)
+      receivedShuffleMessages += 1
+      println(s"[Worker $id] Received ${data.size} items for sorting from $senderId ($receivedShuffleMessages/$expectedShuffleMessages)")
+      
+      // 모든 shuffle 데이터 수신 완료 확인
+      if (expectedShuffleMessages > 0 && receivedShuffleMessages >= expectedShuffleMessages) {
+        println(s"[Worker $id] All shuffle data received")
+      }
+    } catch {
+      case e: Exception => println(s"onPeerMessage 처리 오류: $e, msg: $msg")
     }
   }
   
   /**
    * 데이터 파싱 (쉼표로 구분된 숫자)
+   * (수정) DataShuffler.parseReceivedData 대신 이 함수를 직접 사용
    */
   private def parseData(dataStr: String): Seq[Long] = {
     if (dataStr.isEmpty) Seq.empty
@@ -112,22 +94,10 @@ class WorkerRuntime(
   
   /**
    * 다른 워커에게 데이터 전송 (내부용)
+   * @param message 순수 Payload (예: "100,200,300")
    */
   private def sendData(targetWorkerId: Int, message: String): Unit = {
     net.send(targetWorkerId, message)
-  }
-  
-  /**
-   * 리시버가 다른 워커에게 데이터를 전송할 때 사용하는 public 함수
-   * @param targetWorkerId 대상 워커 ID
-   * @param dataType 데이터 타입 (0: 정렬, 1: 분석)
-   * @param data 전송할 데이터
-   */
-  def sendDataToWorker(targetWorkerId: Int, dataType: Int, data: Seq[Long]): Unit = {
-    val typePrefix = if (dataType == 0) "DATA" else "ANALYZE"
-    val message = s"$typePrefix:${data.mkString(",")}"
-    net.send(targetWorkerId, message)
-    println(s"[Worker $id] Sent ${data.size} items (type=$dataType) to Worker $targetWorkerId")
   }
   
   /**
@@ -228,6 +198,7 @@ class WorkerRuntime(
   
   /**
    * 외부 리시버가 데이터를 받아서 정렬/분석 함수에 넘길 때 호출
+   * (이 함수는 현재 아키텍처에서 직접 사용되지는 않지만, TestExample을 위해 유지)
    * @param dataType 0: 정렬, 1: 분석
    * @param data 데이터 시퀀스
    */

@@ -1,12 +1,13 @@
+// src/main/scala/worker/DataShuffler.scala
 package worker
 
 import common.KeyRange
 import scala.collection.mutable
 
-/** 데이터 재분배(Shuffle) 모듈 */
+/** 데이터 재분배(Shuffle) 모듈 (수정) */
 class DataShuffler(
   myWorkerId: Int,
-  sendFunction: (Int, String) => Unit  // (targetWorkerId, message) => Unit
+  sendFunction: (Int, String) => Unit  // (targetWorkerId, payload) => Unit
 ) {
 
   /**
@@ -24,10 +25,8 @@ class DataShuffler(
       val targetWorker = findTargetWorker(value, keyRanges)
 
       if (targetWorker == myWorkerId) {
-        // 내 데이터는 바로 보관
         myData += value
       } else {
-        // 다른 워커의 데이터는 버퍼에 모음
         dataByWorker.getOrElseUpdate(targetWorker, mutable.ArrayBuffer[Long]()) += value
       }
     }
@@ -36,7 +35,12 @@ class DataShuffler(
     keyRanges.foreach { range =>
       if (range.workerId != myWorkerId) {
         val values = dataByWorker.getOrElse(range.workerId, mutable.ArrayBuffer.empty)
-        sendDataToWorker(range.workerId, values.toSeq)
+        
+        // (수정) "DATA:" 접두사 제거. 순수 payload (예: "100,200,300") 전송
+        val message = values.mkString(",")
+        
+        sendFunction(range.workerId, message)
+        println(s"[Worker $myWorkerId] Sent ${values.size} items to Worker ${range.workerId} (to reliable queue)")
       }
     }
 
@@ -53,24 +57,8 @@ class DataShuffler(
   }
 
   /**
-   * 특정 워커에게 데이터 전송
-   * 데이터 형식: "DATA:value1,value2,value3"
-   * 비어있어도 ACK 전송하여 수신 카운팅 보장
-   */
-  private def sendDataToWorker(targetWorkerId: Int, data: Seq[Long]): Unit = {
-    val message = if (data.nonEmpty) {
-      s"DATA:${data.mkString(",")}"
-    } else {
-      "DATA:"  // 빈 데이터도 메시지 전송 (동기화 보장)
-    }
-    sendFunction(targetWorkerId, message)
-    println(s"[Worker $myWorkerId] Sent ${data.size} items to Worker $targetWorkerId")
-  }
-
-  /**
-   * 수신한 메시지를 파싱하여 데이터 추출
-   * @param message "DATA:value1,value2,value3" 형식
-   * @return 파싱된 데이터
+   * (수정) 이 함수는 더 이상 WorkerRuntime의 수신 경로에서 사용되지 않습니다.
+   * (WorkerRuntime이 자체 parseData 사용)
    */
   def parseReceivedData(message: String): Seq[Long] = {
     if (message.startsWith("DATA:")) {
@@ -78,7 +66,9 @@ class DataShuffler(
       if (dataStr.isEmpty) Seq.empty
       else dataStr.split(",").map(_.toLong).toSeq
     } else {
-      Seq.empty
+      // 이전 로직과의 호환성을 위해 남겨둠
+      if (message.isEmpty) Seq.empty
+      else message.split(",").map(_.toLong).toSeq
     }
   }
 }

@@ -42,6 +42,8 @@ Milestone #1: 100% completed. (Concept learning, environment setup, data generat
 Milestone #2: Approximately 50–60% completed. (Basic communication design and partial implementation in progress.)  
 Milestone #3: Approximately 30% completed. (System architecture and skeleton code largely defined and partially implemented.)
 ### Week 5 Progress slides deadline (Nov 16 Sunday, 11:59pm)
+[Week5](https://github.com/JiyongPostech/332project/blob/main/document/week5.md)
+
 ### Week 6 Progress presentation
 ### Week 7
 ### Week 8 Project deadline (Dec 7 Sunday, 11:59pm)
