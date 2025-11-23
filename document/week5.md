@@ -17,6 +17,7 @@ Local sorting for Long implemented and prepared for downstream merge; initial pa
 #### Ganghyeon An
 - Led pipeline and architecture: designed Sampling → Partitioning (quantile splitters, [lo, hi)), Shuffle, and Merge flow.  
 - Defined module boundaries and shared interfaces (messages/metadata), and set correctness checks for the merge stage (no gaps/overlaps, count preservation).  
+- Prepared presentation materials and get ready to present.  
   
 #### Jiyong Shin
 - Owned the network part: chose Netty and built the Master–Worker control path (registration, peer list exchange, multi-worker recognition) with a broadcast hook for partition plans.  

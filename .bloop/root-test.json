@@ -1,0 +1,672 @@
+{
+    "version": "1.4.0",
+    "project": {
+        "name": "root-test",
+        "directory": "C:\\Users\\gimon\\OneDrive - postech.ac.kr\\Desktop\\cs434\\332project\\332project",
+        "workspaceDir": "C:\\Users\\gimon\\OneDrive - postech.ac.kr\\Desktop\\cs434\\332project\\332project",
+        "sources": [
+            "C:\\Users\\gimon\\OneDrive - postech.ac.kr\\Desktop\\cs434\\332project\\332project\\src\\test\\scala",
+            "C:\\Users\\gimon\\OneDrive - postech.ac.kr\\Desktop\\cs434\\332project\\332project\\src\\test\\scala-2.13",
+            "C:\\Users\\gimon\\OneDrive - postech.ac.kr\\Desktop\\cs434\\332project\\332project\\src\\test\\scala-2",
+            "C:\\Users\\gimon\\OneDrive - postech.ac.kr\\Desktop\\cs434\\332project\\332project\\src\\test\\java",
+            "C:\\Users\\gimon\\OneDrive - postech.ac.kr\\Desktop\\cs434\\332project\\332project\\target\\scala-2.13\\src_managed\\test"
+        ],
+        "dependencies": [
+            "root"
+        ],
+        "classpath": [
+            "C:\\Users\\gimon\\OneDrive - postech.ac.kr\\Desktop\\cs434\\332project\\332project\\.bloop\\root\\scala-2.13\\classes",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\org\\scala-lang\\scala-library\\2.13.0\\scala-library-2.13.0.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-all\\4.1.100.Final\\netty-all-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-buffer\\4.1.100.Final\\netty-buffer-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec\\4.1.100.Final\\netty-codec-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-dns\\4.1.100.Final\\netty-codec-dns-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-haproxy\\4.1.100.Final\\netty-codec-haproxy-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-http\\4.1.100.Final\\netty-codec-http-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-http2\\4.1.100.Final\\netty-codec-http2-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-memcache\\4.1.100.Final\\netty-codec-memcache-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-mqtt\\4.1.100.Final\\netty-codec-mqtt-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-redis\\4.1.100.Final\\netty-codec-redis-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-smtp\\4.1.100.Final\\netty-codec-smtp-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-socks\\4.1.100.Final\\netty-codec-socks-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-stomp\\4.1.100.Final\\netty-codec-stomp-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-xml\\4.1.100.Final\\netty-codec-xml-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-common\\4.1.100.Final\\netty-common-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-handler\\4.1.100.Final\\netty-handler-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-native-unix-common\\4.1.100.Final\\netty-transport-native-unix-common-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-handler-proxy\\4.1.100.Final\\netty-handler-proxy-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-handler-ssl-ocsp\\4.1.100.Final\\netty-handler-ssl-ocsp-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-resolver\\4.1.100.Final\\netty-resolver-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-resolver-dns\\4.1.100.Final\\netty-resolver-dns-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport\\4.1.100.Final\\netty-transport-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-rxtx\\4.1.100.Final\\netty-transport-rxtx-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-sctp\\4.1.100.Final\\netty-transport-sctp-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-udt\\4.1.100.Final\\netty-transport-udt-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-classes-epoll\\4.1.100.Final\\netty-transport-classes-epoll-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-classes-kqueue\\4.1.100.Final\\netty-transport-classes-kqueue-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-resolver-dns-classes-macos\\4.1.100.Final\\netty-resolver-dns-classes-macos-4.1.100.Final.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-native-epoll\\4.1.100.Final\\netty-transport-native-epoll-4.1.100.Final-linux-x86_64.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-native-epoll\\4.1.100.Final\\netty-transport-native-epoll-4.1.100.Final-linux-aarch_64.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-native-kqueue\\4.1.100.Final\\netty-transport-native-kqueue-4.1.100.Final-osx-x86_64.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-native-kqueue\\4.1.100.Final\\netty-transport-native-kqueue-4.1.100.Final-osx-aarch_64.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-resolver-dns-native-macos\\4.1.100.Final\\netty-resolver-dns-native-macos-4.1.100.Final-osx-x86_64.jar",
+            "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-resolver-dns-native-macos\\4.1.100.Final\\netty-resolver-dns-native-macos-4.1.100.Final-osx-aarch_64.jar"
+        ],
+        "out": "C:\\Users\\gimon\\OneDrive - postech.ac.kr\\Desktop\\cs434\\332project\\332project\\.bloop\\root",
+        "classesDir": "C:\\Users\\gimon\\OneDrive - postech.ac.kr\\Desktop\\cs434\\332project\\332project\\.bloop\\root\\scala-2.13\\test-classes",
+        "resources": [
+            "C:\\Users\\gimon\\OneDrive - postech.ac.kr\\Desktop\\cs434\\332project\\332project\\src\\test\\resources",
+            "C:\\Users\\gimon\\OneDrive - postech.ac.kr\\Desktop\\cs434\\332project\\332project\\target\\scala-2.13\\resource_managed\\test"
+        ],
+        "scala": {
+            "organization": "org.scala-lang",
+            "name": "scala-compiler",
+            "version": "2.13.0",
+            "options": [
+                
+            ],
+            "jars": [
+                "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\org\\scala-lang\\scala-library\\2.13.0\\scala-library-2.13.0.jar",
+                "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\org\\scala-lang\\scala-compiler\\2.13.0\\scala-compiler-2.13.0.jar",
+                "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\org\\scala-lang\\scala-reflect\\2.13.0\\scala-reflect-2.13.0.jar",
+                "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\jline\\jline\\2.14.6\\jline-2.14.6.jar"
+            ],
+            "setup": {
+                "order": "mixed",
+                "addLibraryToBootClasspath": false,
+                "addCompilerToClasspath": false,
+                "addExtraJarsToClasspath": false,
+                "manageBootClasspath": false,
+                "filterLibraryFromClasspath": false
+            }
+        },
+        "java": {
+            "options": [
+                
+            ]
+        },
+        "test": {
+            "frameworks": [
+                {
+                    "names": [
+                        "org.scalacheck.ScalaCheckFramework"
+                    ]
+                },
+                {
+                    "names": [
+                        "org.specs2.runner.Specs2Framework",
+                        "org.specs2.runner.SpecsFramework"
+                    ]
+                },
+                {
+                    "names": [
+                        "org.specs.runner.SpecsFramework"
+                    ]
+                },
+                {
+                    "names": [
+                        "org.scalatest.tools.Framework",
+                        "org.scalatest.tools.ScalaTestFramework"
+                    ]
+                },
+                {
+                    "names": [
+                        "com.novocode.junit.JUnitFramework"
+                    ]
+                },
+                {
+                    "names": [
+                        "munit.Framework"
+                    ]
+                },
+                {
+                    "names": [
+                        "zio.test.sbt.ZTestFramework"
+                    ]
+                },
+                {
+                    "names": [
+                        "weaver.framework.CatsEffect"
+                    ]
+                },
+                {
+                    "names": [
+                        "hedgehog.sbt.Framework"
+                    ]
+                }
+            ],
+            "options": {
+                "excludes": [
+                    
+                ],
+                "arguments": [
+                    
+                ]
+            }
+        },
+        "platform": {
+            "name": "jvm",
+            "config": {
+                "home": "C:\\Program Files\\Java\\jdk-1.8\\jre",
+                "options": [
+                    "-Duser.dir=C:\\Users\\gimon\\OneDrive - postech.ac.kr\\Desktop\\cs434\\332project\\332project"
+                ]
+            },
+            "mainClass": [
+                
+            ]
+        },
+        "resolution": {
+            "modules": [
+                {
+                    "organization": "org.scala-lang",
+                    "name": "scala-library",
+                    "version": "2.13.0",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "scala-library",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\org\\scala-lang\\scala-library\\2.13.0\\scala-library-2.13.0.jar"
+                        },
+                        {
+                            "name": "scala-library",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\org\\scala-lang\\scala-library\\2.13.0\\scala-library-2.13.0-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-all",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-all",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-all\\4.1.100.Final\\netty-all-4.1.100.Final.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-buffer",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-buffer",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-buffer\\4.1.100.Final\\netty-buffer-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-buffer",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-buffer\\4.1.100.Final\\netty-buffer-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-codec",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-codec",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec\\4.1.100.Final\\netty-codec-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-codec",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec\\4.1.100.Final\\netty-codec-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-codec-dns",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-codec-dns",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-dns\\4.1.100.Final\\netty-codec-dns-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-codec-dns",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-dns\\4.1.100.Final\\netty-codec-dns-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-codec-haproxy",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-codec-haproxy",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-haproxy\\4.1.100.Final\\netty-codec-haproxy-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-codec-haproxy",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-haproxy\\4.1.100.Final\\netty-codec-haproxy-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-codec-http",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-codec-http",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-http\\4.1.100.Final\\netty-codec-http-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-codec-http",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-http\\4.1.100.Final\\netty-codec-http-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-codec-http2",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-codec-http2",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-http2\\4.1.100.Final\\netty-codec-http2-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-codec-http2",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-http2\\4.1.100.Final\\netty-codec-http2-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-codec-memcache",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-codec-memcache",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-memcache\\4.1.100.Final\\netty-codec-memcache-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-codec-memcache",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-memcache\\4.1.100.Final\\netty-codec-memcache-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-codec-mqtt",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-codec-mqtt",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-mqtt\\4.1.100.Final\\netty-codec-mqtt-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-codec-mqtt",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-mqtt\\4.1.100.Final\\netty-codec-mqtt-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-codec-redis",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-codec-redis",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-redis\\4.1.100.Final\\netty-codec-redis-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-codec-redis",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-redis\\4.1.100.Final\\netty-codec-redis-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-codec-smtp",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-codec-smtp",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-smtp\\4.1.100.Final\\netty-codec-smtp-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-codec-smtp",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-smtp\\4.1.100.Final\\netty-codec-smtp-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-codec-socks",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-codec-socks",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-socks\\4.1.100.Final\\netty-codec-socks-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-codec-socks",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-socks\\4.1.100.Final\\netty-codec-socks-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-codec-stomp",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-codec-stomp",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-stomp\\4.1.100.Final\\netty-codec-stomp-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-codec-stomp",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-stomp\\4.1.100.Final\\netty-codec-stomp-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-codec-xml",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-codec-xml",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-xml\\4.1.100.Final\\netty-codec-xml-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-codec-xml",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-codec-xml\\4.1.100.Final\\netty-codec-xml-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-common",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-common",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-common\\4.1.100.Final\\netty-common-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-common",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-common\\4.1.100.Final\\netty-common-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-handler",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-handler",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-handler\\4.1.100.Final\\netty-handler-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-handler",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-handler\\4.1.100.Final\\netty-handler-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-transport-native-unix-common",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-transport-native-unix-common",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-native-unix-common\\4.1.100.Final\\netty-transport-native-unix-common-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-transport-native-unix-common",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-native-unix-common\\4.1.100.Final\\netty-transport-native-unix-common-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-handler-proxy",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-handler-proxy",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-handler-proxy\\4.1.100.Final\\netty-handler-proxy-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-handler-proxy",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-handler-proxy\\4.1.100.Final\\netty-handler-proxy-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-handler-ssl-ocsp",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-handler-ssl-ocsp",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-handler-ssl-ocsp\\4.1.100.Final\\netty-handler-ssl-ocsp-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-handler-ssl-ocsp",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-handler-ssl-ocsp\\4.1.100.Final\\netty-handler-ssl-ocsp-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-resolver",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-resolver",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-resolver\\4.1.100.Final\\netty-resolver-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-resolver",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-resolver\\4.1.100.Final\\netty-resolver-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-resolver-dns",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-resolver-dns",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-resolver-dns\\4.1.100.Final\\netty-resolver-dns-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-resolver-dns",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-resolver-dns\\4.1.100.Final\\netty-resolver-dns-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-transport",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-transport",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport\\4.1.100.Final\\netty-transport-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-transport",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport\\4.1.100.Final\\netty-transport-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-transport-rxtx",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-transport-rxtx",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-rxtx\\4.1.100.Final\\netty-transport-rxtx-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-transport-rxtx",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-rxtx\\4.1.100.Final\\netty-transport-rxtx-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-transport-sctp",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-transport-sctp",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-sctp\\4.1.100.Final\\netty-transport-sctp-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-transport-sctp",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-sctp\\4.1.100.Final\\netty-transport-sctp-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-transport-udt",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-transport-udt",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-udt\\4.1.100.Final\\netty-transport-udt-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-transport-udt",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-udt\\4.1.100.Final\\netty-transport-udt-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-transport-classes-epoll",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-transport-classes-epoll",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-classes-epoll\\4.1.100.Final\\netty-transport-classes-epoll-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-transport-classes-epoll",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-classes-epoll\\4.1.100.Final\\netty-transport-classes-epoll-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-transport-classes-kqueue",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-transport-classes-kqueue",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-classes-kqueue\\4.1.100.Final\\netty-transport-classes-kqueue-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-transport-classes-kqueue",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-transport-classes-kqueue\\4.1.100.Final\\netty-transport-classes-kqueue-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "io.netty",
+                    "name": "netty-resolver-dns-classes-macos",
+                    "version": "4.1.100.Final",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "netty-resolver-dns-classes-macos",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-resolver-dns-classes-macos\\4.1.100.Final\\netty-resolver-dns-classes-macos-4.1.100.Final.jar"
+                        },
+                        {
+                            "name": "netty-resolver-dns-classes-macos",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\io\\netty\\netty-resolver-dns-classes-macos\\4.1.100.Final\\netty-resolver-dns-classes-macos-4.1.100.Final-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "org.scala-lang",
+                    "name": "scala-library",
+                    "version": "2.13.0",
+                    "configurations": "optional",
+                    "artifacts": [
+                        {
+                            "name": "scala-library",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\org\\scala-lang\\scala-library\\2.13.0\\scala-library-2.13.0.jar"
+                        },
+                        {
+                            "name": "scala-library",
+                            "classifier": "sources",
+                            "path": "C:\\Users\\gimon\\AppData\\Local\\Coursier\\Cache\\v1\\https\\repo1.maven.org\\maven2\\org\\scala-lang\\scala-library\\2.13.0\\scala-library-2.13.0-sources.jar"
+                        }
+                    ]
+                }
+            ]
+        },
+        "tags": [
+            "test"
+        ]
+    }
+}

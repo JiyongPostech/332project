@@ -45,6 +45,18 @@ Milestone #3: Approximately 30% completed. (System architecture and skeleton cod
 [Week5](https://github.com/JiyongPostech/332project/blob/main/document/week5.md)
 
 ### Week 6 Progress presentation
+| Member | Task | Next Steps |
+| --- | --- | --- |
+| ALL | - Gave the midterm presentation (pipeline, reliability, logs)<br> - Revised architecture: clearer Master/Worker roles, async shuffle+sort, cleaner interfaces<br> - Small refactors to align modules and messages | - Consolidate the revised design into the code skeleton<br> - Run 2–3-worker smoke tests with structured logs<br> - Track risks (skew, memory, port conflicts) and basic metrics |
+| GanghyeonAn | - Composed presentation storyline and examples (end-to-end flow, logs)<br> - Reviewed data path (sampling → partition → shuffle → merge) and module boundaries<br> - Prepared sample I/O cases for demos | - Update run scripts and docs for multi-worker runs<br> - Assemble a small smoke-test set and log-collection guide |
+| JiyongShin | - Refined Netty reliability path: SendQueue/ReceiveQueue, UnAckedMap, exponential backoff<br> - Formalized completion based on expectedWorkerIds; improved master event logging | - Standardize handling/logs for ACK loss/delay/dup<br> - Fault-injection (pause/kill worker) to validate retries and recovery<br> - Add trace IDs to retransmit paths |
+| SuminPark | - Re-checked sorting/bucketing on Long keys with `[lo, hi)` edges and empty-partition cases<br> - Simplified block-meta schema for merge inputs (size/count/checksum) | - Implement key–value split with value-carrying sort/bucket<br> - Add merge-input validators (order, counts, checksum) and unit tests |
+
+Milestone #2: ~85–90% (multi-worker comms design solid; partial reliability in place)  
+Milestone #3: ~60–70% (architecture refined; skeleton/interfaces aligned)  
+Milestone #4: ~30–40% (local sort/bucket path defined; KV split next)
+
+
 ### Week 7
 ### Week 8 Project deadline (Dec 7 Sunday, 11:59pm)
 ### Week 9 Final presentation
