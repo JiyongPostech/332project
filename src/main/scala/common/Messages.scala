@@ -1,9 +1,18 @@
 package common
 
-/** Master ↔ Worker 제어 메시지 정의 (레거시, 현재 미사용) */
-sealed trait ControlMessage
-object ControlMessage {
-  // 태스크 할당 (현재는 전송만 하고 처리 안 함, 추후 확장용)
-  final case class AssignTask(jobId: String, task: Task) extends ControlMessage
-  final case class CancelTask(jobId: String, taskId: String) extends ControlMessage
+object Messages {
+  val TYPE_DATA = "DATA"
+  val TYPE_ACK  = "ACK"
+  val TYPE_FIN  = "FIN"
+  
+  val TYPE_REGISTER    = "REGISTER"
+  val TYPE_PEER_LIST   = "PEER_LIST"
+  val TYPE_PEER_JOINED = "PEER_JOINED"
+  
+  val TYPE_SAMPLE   = "SAMPLE"
+  val TYPE_RANGE    = "RANGE"
+  val TYPE_DONE     = "DONE"      // 워커 -> 마스터 (나 끝났어)
+  val TYPE_ALL_DONE = "ALL_DONE"  // 마스터 -> 워커 (전원 끝났으니 퇴근해)
+  
+  val DELIMITER = ":"
 }
