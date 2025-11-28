@@ -6,6 +6,8 @@ hs_err_pid*
 
 /.metals/
 /.vscode/
+/.bloop/
+/.bsp/
 project\target\
 /project/target
 /target
