@@ -6,6 +6,7 @@ object Messages {
   val TYPE_FIN  = "FIN"
   
   val TYPE_REGISTER    = "REGISTER"
+  val TYPE_REGISTER_RESPONSE = "REGISTER_RESPONSE"
   val TYPE_PEER_LIST   = "PEER_LIST"
   val TYPE_PEER_JOINED = "PEER_JOINED"
   
