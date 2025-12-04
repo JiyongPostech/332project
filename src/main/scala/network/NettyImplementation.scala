@@ -20,12 +20,12 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
   private val peers = TrieMap[Int, InetSocketAddress]()
   private val MASTER_ID = 0
   
-  // [추가] 마스터가 워커 ID를 순차적으로 발급하기 위한 카운터
   private val workerIdCounter = new AtomicInteger(1)
 
   // UDP 관련
   private val sendQueue = new LinkedBlockingQueue[(Int, String, Array[Byte])]()
-  private val unAckedMessages = new ConcurrentHashMap[String, (Int, Array[Byte], Long)]()
+  // [수정] 재전송 관리를 위해 (targetId, data, lastSentTime, retryCount) 저장
+  private val unAckedMessages = new ConcurrentHashMap[String, (Int, Array[Byte], Long, Int)]()
   private val udpGroup = new NioEventLoopGroup()
   private var udpChannel: Channel = _
 
@@ -111,10 +111,8 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
     val udpPort = parts(2).toInt
     val remoteIp = ctx.channel().remoteAddress().asInstanceOf[InetSocketAddress].getAddress.getHostAddress
     
-    // [중요] ID가 -1이면 마스터가 새로 발급
     if (reqId == -1) {
       reqId = workerIdCounter.getAndIncrement()
-      // 워커에게 할당된 ID 전송
       val response = s"$TYPE_REGISTER_RESPONSE$DELIMITER$reqId"
       sendTcpPacket(ctx.channel(), response.getBytes(CharsetUtil.UTF_8))
     }
@@ -122,12 +120,10 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
     workerChannels.put(reqId, ctx.channel())
     val newPeerAddr = new InetSocketAddress(remoteIp, udpPort)
     
-    // 기존 피어들에게 새 멤버 알림
     val joinedMsg = s"$TYPE_PEER_JOINED$DELIMITER$reqId$DELIMITER$remoteIp$DELIMITER$udpPort"
     val joinedBytes = joinedMsg.getBytes(CharsetUtil.UTF_8)
     workerChannels.forEach { (id, c) => if (id != reqId && c.isActive) sendTcpPacket(c, joinedBytes) }
 
-    // 새 멤버에게 기존 리스트 전송
     val sb = new StringBuilder(TYPE_PEER_LIST)
     peers.foreach { case (pid, addr) =>
       sb.append(s"$DELIMITER$pid$DELIMITER${addr.getAddress.getHostAddress}$DELIMITER${addr.getPort}")
@@ -137,7 +133,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
     sendTcpPacket(ctx.channel(), sb.toString().getBytes(CharsetUtil.UTF_8))
     println(s"[Master] Worker $reqId registered ($remoteIp:$udpPort).")
     
-    // 앱 계층에 알림
     if (appHandler != null) appHandler(reqId, msgStr.getBytes(CharsetUtil.UTF_8))
   }
 
@@ -157,11 +152,9 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
               if (str.startsWith(TYPE_PEER_LIST)) handlePeerList(new String(bytes, CharsetUtil.UTF_8))
               else if (str.startsWith(TYPE_PEER_JOINED)) handlePeerJoined(new String(bytes, CharsetUtil.UTF_8))
               else if (str.startsWith(TYPE_REGISTER_RESPONSE)) {
-                // [중요] 마스터가 준 ID를 받아서 설정
                 val newId = str.trim.split(DELIMITER)(1).toInt
                 NettyImplementation.this.myId = newId
                 println(s"[Netty] Assigned Worker ID: $newId")
-                // 앱 계층(WorkerRuntime)이 대기를 풀 수 있도록 신호 전달
                 if (appHandler != null) appHandler(MASTER_ID, bytes)
               }
               else if (appHandler != null) appHandler(MASTER_ID, bytes)
@@ -171,7 +164,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
       })
     masterChannel = b.connect(host, port).sync().channel()
     
-    // [중요] ID -1로 등록 요청
     val regMsg = s"$TYPE_REGISTER$DELIMITER-1$DELIMITER$myPort".getBytes(CharsetUtil.UTF_8)
     sendTcpPacket(masterChannel, regMsg)
   }
@@ -210,7 +202,7 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
     -1
   }
 
-  // --- UDP Logic (Reliable) ---
+  // --- UDP Logic (Reliable with Exponential Backoff) ---
 
   private def startUdpServer(): Unit = {
     val b = new Bootstrap()
@@ -227,12 +219,13 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
   }
 
   private def startBackgroundThreads(): Unit = {
-    // Sender
+    // Sender Thread
     new Thread(() => {
       while (!Thread.currentThread().isInterrupted) {
         val (targetId, msgId, data) = sendQueue.take()
         if (peers.contains(targetId)) {
-           unAckedMessages.put(msgId, (targetId, data, System.currentTimeMillis()))
+           // [수정] 초기 retryCount = 0 설정
+           unAckedMessages.put(msgId, (targetId, data, System.currentTimeMillis(), 0))
            sendRealUdp(targetId, TYPE_DATA, msgId, data)
         } else {
            Thread.sleep(500)
@@ -241,18 +234,27 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
       }
     }, "UDP-Sender").start()
 
-    // Retry
+    // Retry Thread (Exponential Backoff 적용)
     new Thread(() => {
       while (!Thread.currentThread().isInterrupted) {
-        Thread.sleep(1000)
+        Thread.sleep(100) // 0.1초마다 체크 (정밀도 향상)
         val now = System.currentTimeMillis()
         val iter = unAckedMessages.entrySet().iterator()
+        
         while (iter.hasNext) {
           val entry = iter.next()
-          val (targetId, data, lastSent) = entry.getValue
-          if (now - lastSent > 1000) {
-             sendRealUdp(targetId, TYPE_DATA, entry.getKey, data)
-             unAckedMessages.put(entry.getKey, (targetId, data, now))
+          val msgId = entry.getKey
+          val (targetId, data, lastSent, retryCount) = entry.getValue
+          
+          // [핵심] 지수 백오프 계산: 1초 * 2^retryCount (최대 60초)
+          // 1회차: 1초, 2회차: 2초, 3회차: 4초 ... 6회차: 32초
+          val backoff = Math.min(1000L * Math.pow(2, retryCount).toLong, 60000L)
+          
+          if (now - lastSent > backoff) {
+             println(s"[Netty] Resending $msgId to $targetId (Retry #${retryCount + 1}, Interval: ${backoff}ms)")
+             sendRealUdp(targetId, TYPE_DATA, msgId, data)
+             // [수정] retryCount 증가 및 마지막 전송 시간 갱신
+             unAckedMessages.put(msgId, (targetId, data, now, retryCount + 1))
           }
         }
       }
@@ -286,7 +288,7 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
       if (typeStr == TYPE_ACK) {
         unAckedMessages.remove(msgId)
       } else if (typeStr == TYPE_DATA || typeStr == TYPE_FIN) {
-        // ACK
+        // ACK 전송 (지수 백오프와 상관없이 ACK는 즉시 보냄)
         val addr = peers.get(senderId).orNull
         if (addr != null || senderId == myId) {
            val header = s"$TYPE_ACK$DELIMITER$myId$DELIMITER$msgId$DELIMITER"
