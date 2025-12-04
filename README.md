@@ -58,6 +58,19 @@ Milestone #4: ~30–40% (local sort/bucket path defined; KV split next)
 
 
 ### Week 7
+
+| Member | Progress | Next Steps |
+| --- | --- | --- |
+| ALL | Master–Worker 파이프라인을 코드로 거의 끝까지 연결 (샘플링 → RANGE → Shuffle → local sort/merge → partition 출력) | MakeData → master/workers → ValidateSort 까지 한 번에 도는 기본 스크립트/실행 가이드 만들기 |
+| GanghyeonAn | Record/MakeData/ValidateSort 기준으로 데이터 포맷·파이프라인 흐름 정리, pivot/partition 전략이 구현과 일치하는지 검토 | README에 전체 데이터 흐름·디렉터리 구조·검증 방법(ValidateSort, InspectData) 간단히 정리 |
+| JiyongShin | Netty 네트워크(REGISTER, SAMPLE, RANGE, DONE, ALL_DONE)와 WorkerRuntime을 실제로 연결, UDP 기반 shuffle 경로 연동 | 단계별 로그 포맷 정리해서 “지금 어느 단계인지” 바로 보이게 만들고, 간단한 fault 시나리오(워커 kill 등) 설계 |
+| SuminPark | Worker 핵심 로직 구현 완료: DataSorter(외부 정렬용 run 생성), DiskMerger(머지), FileIO, WorkerRuntime(샘플 수집·RANGE 수신·shuffle·정렬·DONE 보고), worker.Launcher 인자 처리 | DataSorter/DiskMerger 파라미터(버퍼 크기 등) 간단 튜닝, 입력/출력 경로 오류에 대한 기본 예외 처리·sanity check 보완 |
+
+Milestone #3: 100%: 설계된 파이프라인이 대부분 코드로 반영, 나머지는 문서화/정리 수준  
+Milestone #4: 90%: local sort, partitioning, disk merge, worker 측 네트워크 역할 구현 완료, 튜닝·에러 처리·간단 테스트가 남아 있음  
+Milestone #5: 80%: Master의 샘플 수집 → pivot 계산 → RANGE 배포 → DONE/ALL_DONE 관리까지 구현 end-to-end 스크립트, 다양한 설정으로 통합 테스트가 필요  
+Milestone #6: 20%: 기본 유틸(ValidateSort, InspectData)은 준비 완료 체계적인 테스트 플랜, fault 시나리오, 결과 정리 작업이 본격 과제  
+
 ### Week 8 Project deadline (Dec 7 Sunday, 11:59pm)
 ### Week 9 Final presentation
 

@@ -5,6 +5,8 @@
 hs_err_pid*
 
 /.metals/
+/.bloop/
+/.bsp/
 /.vscode/
 /.bloop/
 /.bsp/
