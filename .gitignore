@@ -8,6 +8,8 @@ hs_err_pid*
 /.bloop/
 /.bsp/
 /.vscode/
+/.bloop/
+/.bsp/
 project\target\
 /project/target
 /target

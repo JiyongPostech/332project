@@ -1,105 +1,140 @@
 package master
 
-import common._
-import network._   // 기존 MasterService / NetworkService 활용 (start/stop 등)
+import network.NetworkService
+import common.Messages
+import java.nio.charset.StandardCharsets
+import java.util.Arrays
+import scala.collection.mutable
 
-import java.util.concurrent.ConcurrentHashMap
-import scala.jdk.CollectionConverters._
+class MasterCoordinator(net: NetworkService, expectedWorkers: Int) {
+  private val connectedWorkers = mutable.Set[Int]()
+  private val doneWorkers = mutable.Set[Int]()
+  
+  // 샘플링 관련 상태
+  private val samples = mutable.ArrayBuffer[Array[Byte]]() 
+  private val sampledWorkers = mutable.Set[Int]()
 
-/** 전체 Job 흐름을 ‘조정’하는 진입점 */
-class MasterCoordinator(masterNet: MasterService, sendCtl: ControlSender) {
-
-  private val workers = new ConcurrentHashMap[Int, WorkerInfo]().asScala // id -> info
-
-  /** 마스터 프로세스 시작 (네트워킹 서버 가동 등) */
-  def start(): Unit = {
-    masterNet.start() // 기존 트레이트 사용 
-  }
-
-  /** 안전 종료 */
-  def stop(): Unit = masterNet.stop()
-
-  /** 워커 등록/해제 이벤트 처리 (네트워크 계층에서 콜백 연결 예정) */
-  def onWorkerRegistered(info: WorkerInfo): Unit = {
-    workers.put(info.id, info)
-  }
-  def onWorkerLeft(workerId: Int): Unit = {
-    workers.remove(workerId)
-  }
-
-  /** 새로운 Job 수신 → 태스크 분해 → 배정 (레거시, 현재 실질적 동작 없음) */
-  def submitJob(job: Job): Unit = {
-    TaskAssigner.assignAll(job, workers.values.toSeq, sendCtl)
-  }
-
-  /**
-   * 초기 데이터를 워커들에게 분배
-   * @param dataFilePath 분배할 데이터 파일 경로
-   */
-  def distributeInitialData(dataFilePath: String): Unit = {
-    if (workers.isEmpty) {
-      println("[MasterCoordinator] No workers available for data distribution")
-      return
+  // Java 8 호환 Unsigned Byte 비교 함수
+  private def compareUnsigned(a: Array[Byte], b: Array[Byte]): Int = {
+    val len = Math.min(a.length, b.length)
+    var i = 0
+    while (i < len) {
+      val v1 = a(i) & 0xFF
+      val v2 = b(i) & 0xFF
+      if (v1 != v2) return v1 - v2
+      i += 1
     }
+    a.length - b.length
+  }
 
-    try {
-      // 1. 파일에서 데이터 읽기
-      val source = scala.io.Source.fromFile(dataFilePath)
-      val allData = try {
-        source.getLines()
-          .map(_.trim)
-          .filter(_.nonEmpty)
-          .map(_.toLong)
-          .toSeq
-      } finally {
-        source.close()
-      }
-
-      if (allData.isEmpty) {
-        println("[MasterCoordinator] No data to distribute")
-        return
-      }
-
-      println(s"[MasterCoordinator] Distributing ${allData.size} items to ${workers.size} workers")
-
-      // 2. 워커 수만큼 균등 분할
-      val workerList = workers.values.toSeq.sortBy(_.id)
-      val chunkSize = math.ceil(allData.size.toDouble / workerList.size).toInt
+  def start(): Unit = {
+    println(s"[Master] Started. Expecting $expectedWorkers workers.")
+    
+    net.bind { (senderId, payload) =>
+      // 안전한 헤더 파싱 (길이 체크)
+      val headerStr = if (payload.length >= 50) new String(payload.take(50), StandardCharsets.UTF_8) else new String(payload, StandardCharsets.UTF_8)
       
-      // 3. 각 워커에게 데이터 청크 전송
-      workerList.zipWithIndex.foreach { case (worker, idx) =>
-        val start = idx * chunkSize
-        val end = math.min(start + chunkSize, allData.size)
-        val chunk = allData.slice(start, end)
-        
-        if (chunk.nonEmpty) {
-          val message = s"INITIAL_DATA:${chunk.mkString(",")}\n"
-          sendCtl match {
-            case netCtl: NetControlSender =>
-              // NetControlSender를 통해 전송
-              masterNet match {
-                case netty: NettyMasterService =>
-                  netty.sendToWorker(worker.id, message)
-                  println(s"[MasterCoordinator] Sent ${chunk.size} items to Worker ${worker.id}")
-                case _ =>
-              }
-            case _ =>
+      if (headerStr.contains(Messages.TYPE_REGISTER)) {
+        synchronized {
+          connectedWorkers.add(senderId)
+          if (connectedWorkers.size == expectedWorkers) {
+            println(s"[Master] All $expectedWorkers workers registered.")
           }
         }
       }
-
-      println("[MasterCoordinator] Initial data distribution complete")
-
-    } catch {
-      case e: Exception =>
-        println(s"[MasterCoordinator] Error during data distribution: ${e.getMessage}")
-        e.printStackTrace()
+      else if (headerStr.startsWith(Messages.TYPE_SAMPLE)) {
+        // [1] 샘플 수신
+        val delimiterIdx = headerStr.indexOf(Messages.DELIMITER)
+        if (delimiterIdx > 0) {
+          val headerLen = delimiterIdx + 1
+          val dataLen = payload.length - headerLen
+          
+          // 10바이트씩 잘라서 저장
+          if (dataLen > 0 && dataLen % 10 == 0) {
+             val data = payload.slice(headerLen, payload.length)
+             synchronized {
+               for (i <- 0 until dataLen / 10) {
+                 samples += data.slice(i * 10, (i + 1) * 10)
+               }
+               sampledWorkers.add(senderId)
+               println(s"[Master] Received samples from Worker $senderId (${sampledWorkers.size}/$expectedWorkers)")
+               
+               // [2] 모든 워커의 샘플이 도착했는지 확인 (Deadlock 방지)
+               if (sampledWorkers.size == expectedWorkers) {
+                 distributeRanges()
+               }
+             }
+          }
+        }
+      }
+      else if (headerStr.startsWith(Messages.TYPE_DONE)) {
+        // [3] 완료 보고 수신
+        synchronized {
+          doneWorkers.add(senderId)
+          println(s"[Master] Worker $senderId finished. (${doneWorkers.size}/$expectedWorkers)")
+          
+          // [4] 모든 워커 완료 시 해산 명령 (ALL_DONE)
+          if (doneWorkers.size == expectedWorkers) {
+            println("[Master] All tasks completed. Broadcasting ALL_DONE...")
+            val allDoneMsg = s"${Messages.TYPE_ALL_DONE}${Messages.DELIMITER}".getBytes(StandardCharsets.UTF_8)
+            
+            for (wid <- 1 to expectedWorkers) {
+               net.send(wid, allDoneMsg)
+            }
+            
+            // 잠시 대기 후 마스터 종료
+            new Thread(() => {
+              Thread.sleep(2000) 
+              println("[Master] Shutdown.")
+              net.stop()
+              System.exit(0)
+            }).start()
+          }
+        }
+      }
     }
   }
-}
 
-/** 제어 메시지 송신을 추상화 (네트워크 계층에 의존 줄이기) */
-trait ControlSender {
-  def sendAssign(workerId: Int, msg: ControlMessage.AssignTask): Unit
-  def sendCancel(workerId: Int, msg: ControlMessage.CancelTask): Unit
+  private var rangesDistributed = false
+  
+  private def distributeRanges(): Unit = synchronized {
+    if (rangesDistributed) return
+    rangesDistributed = true
+    
+    println(s"[Master] Computing key ranges from ${samples.size} samples...")
+    
+    // 1. 샘플 정렬
+    val sortedSamples = samples.sortWith { (a, b) => 
+      compareUnsigned(a, b) < 0 
+    }
+    
+    // 2. 피벗(Pivot) 계산
+    val numPivots = expectedWorkers - 1
+    val pivots = new mutable.ArrayBuffer[Byte]()
+    
+    if (sortedSamples.nonEmpty && numPivots > 0) {
+      val step = sortedSamples.size / expectedWorkers
+      for (i <- 1 to numPivots) {
+        val pivotIndex = i * step
+        if (pivotIndex < sortedSamples.size) {
+          pivots ++= sortedSamples(pivotIndex)
+        }
+      }
+    }
+    
+    // 3. 메시지 생성 및 전송
+    val header = s"${Messages.TYPE_RANGE}${Messages.DELIMITER}"
+    val headerBytes = header.getBytes(StandardCharsets.UTF_8)
+    
+    val bodyBuf = java.nio.ByteBuffer.allocate(4 + pivots.size)
+    bodyBuf.putInt(expectedWorkers)
+    bodyBuf.put(pivots.toArray)
+    
+    val packet = headerBytes ++ bodyBuf.array()
+    
+    for (wid <- 1 to expectedWorkers) {
+      net.send(wid, packet)
+    }
+    println(s"[Master] Broadcasted ranges (Pivots: $numPivots).")
+  }
 }
