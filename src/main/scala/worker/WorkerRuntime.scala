@@ -1,6 +1,6 @@
 package worker
 
-import common.{Record, Messages}
+import common.{Record, Messages, Logger}
 import network.NetworkService
 import java.io.File
 import java.nio.ByteBuffer
@@ -11,12 +11,11 @@ import scala.collection.mutable.{ArrayBuffer, Map => MutableMap}
 class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outputDir: File, masterId: Int, masterHost: String, masterPort: Int) {
   
   private val idLatch = new java.util.concurrent.CountDownLatch(1)
-
   private val sorter = new DataSorter(new File(outputDir, "tmp"))
   private val merger = new DiskMerger()
   private var finishedPeers = Set[Int]()
   
-  private var totalPeers = 0
+  private var totalPartitions = 0 // [수정] 총 파티션 수 (P)
   private var pivots: Array[Array[Byte]] = _ 
 
   private def compareUnsigned(a: Array[Byte], b: Array[Byte]): Int = {
@@ -41,7 +40,7 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
         if (headerStr.startsWith(Messages.TYPE_REGISTER_RESPONSE)) {
            val newId = headerStr.trim.split(Messages.DELIMITER)(1).toInt
            this.id = newId
-           println(s"[WorkerRuntime] Assigned ID: $id")
+           Logger.info(s"Assigned ID: $id")
            idLatch.countDown() 
         }
         else if (headerStr.startsWith(Messages.TYPE_RANGE)) {
@@ -53,11 +52,9 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
       } else {
         if (headerStr.startsWith(Messages.TYPE_FIN)) handleFin(senderId)
         else {
-          // 배치(Batch) 데이터 수신 처리
           if (payload.length > 0 && payload.length % Record.SIZE == 0) {
              var offset = 0
              while (offset < payload.length) {
-                // 100바이트씩 잘라서 처리
                 val recBytes = Arrays.copyOfRange(payload, offset, offset + Record.SIZE)
                 sorter.addRecord(Record(recBytes))
                 offset += Record.SIZE
@@ -67,19 +64,19 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
       }
     }
     
-    println(s"[Worker] Connecting to Master ($masterHost:$masterPort)...")
+    Logger.info(s"Connecting to Master ($masterHost:$masterPort)...")
     net.connect(masterHost, masterPort)
     
-    println("[Worker] Waiting for ID assignment from Master...")
+    Logger.info("Waiting for ID assignment...")
     idLatch.await()
-    println(s"[Worker] ID Assigned: $id. Starting pipeline.")
+    Logger.info(s"ID $id assigned. Starting pipeline.")
 
     Thread.sleep(500)
     sendSamples()
   }
 
   private def sendSamples(): Unit = {
-    println(s"[Worker $id] Sampling data...")
+    Logger.info("Sampling data...")
     val samples = new ArrayBuffer[Byte]()
     
     inputDirs.foreach { dir =>
@@ -101,7 +98,7 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
     val packet = headerBytes ++ samples.toArray
     
     net.send(masterId, packet)
-    println(s"[Worker $id] Sent ${samples.size / 10} samples to Master.")
+    Logger.info(s"Sent samples to Master.")
   }
 
   private def handleKeyRange(payload: Array[Byte], headerStr: String): Unit = {
@@ -109,8 +106,8 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
     val bodyBytes = payload.drop(delimiterIdx + 1)
     val buf = ByteBuffer.wrap(bodyBytes)
     
-    totalPeers = buf.getInt
-    val numPivots = totalPeers - 1
+    totalPartitions = buf.getInt // 총 파티션 수 (W=P) 수신
+    val numPivots = totalPartitions - 1
     
     pivots = new Array[Array[Byte]](numPivots)
     for (i <- 0 until numPivots) {
@@ -119,16 +116,15 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
       pivots(i) = p
     }
     
-    println(s"[Worker $id] Received Key Range. Total workers: $totalPeers, Pivots: $numPivots")
+    Logger.info(s"Received Key Range. Total Partitions: $totalPartitions, Pivots: $numPivots")
     startShuffle()
   }
 
   private def startShuffle(): Unit = {
-    println(s"[Worker $id] Starting Shuffle (Batching Enabled)...")
+    Logger.info("Starting Shuffle...")
     
-    // 각 타겟 워커별 전송 버퍼 (Batching Buffer)
     val sendBuffers = MutableMap[Int, ArrayBuffer[Byte]]()
-    val BATCH_SIZE = 64 * 1024 // 64KB 단위로 묶어서 전송
+    val BATCH_SIZE = 64 * 1024 
     
     inputDirs.foreach { dir =>
       if(dir.exists()) {
@@ -139,11 +135,9 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
             val rec = iter.next()
             val targetId = getTargetWorker(rec.key)
             
-            // 버퍼에 추가
             val buf = sendBuffers.getOrElseUpdate(targetId, new ArrayBuffer[Byte](BATCH_SIZE + Record.SIZE))
             buf ++= rec.toBytes
             
-            // 버퍼가 차면 전송하고 비움
             if (buf.size >= BATCH_SIZE) {
                net.send(targetId, buf.toArray)
                buf.clear()
@@ -161,8 +155,9 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
       }
     }
     
+    // FIN 전송: 총 워커 수(2명)에게만 FIN 전송
     val finPacket = s"${Messages.TYPE_FIN}${Messages.DELIMITER}".getBytes(StandardCharsets.UTF_8)
-    for (pid <- 1 to totalPeers if pid != id) {
+    for (pid <- 1 to totalPartitions if pid != id) { // totalPartitions = numWorkers
       net.send(pid, finPacket)
     }
     handleFin(id)
@@ -171,38 +166,39 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
   private def getTargetWorker(key: Array[Byte]): Int = {
     for (i <- 0 until pivots.length) {
       if (compareUnsigned(key, pivots(i)) < 0) {
-        return i + 1
+        return i + 1 
       }
     }
-    return totalPeers
+    return totalPartitions // Partition ID: W
   }
 
   private def handleFin(senderId: Int): Unit = synchronized {
     if (finishedPeers.contains(senderId)) return
     
     finishedPeers += senderId
-    println(s"[Worker $id] Received FIN from Worker $senderId (${finishedPeers.size}/$totalPeers)")
+    Logger.info(s"Received FIN from Worker $senderId (${finishedPeers.size}/$totalPartitions)")
     
-    if (finishedPeers.size == totalPeers) {
-      println(s"[Worker $id] Shuffle complete. Starting Local Merge...")
+    if (finishedPeers.size == totalPartitions) { // W명이 모두 FIN을 보냄
+      Logger.info("Shuffle complete. Starting Local Merge...")
       sorter.close() 
       
       if (!outputDir.exists()) outputDir.mkdirs()
+      // [복구] partition.$id 파일 하나만 생성
       val finalFile = new File(outputDir, s"partition.$id")
       
       merger.merge(sorter.tempFiles.toSeq, finalFile)
       
-      println(s"[Worker $id] Job Finished. Reporting to Master...")
+      Logger.info("Job Finished. Reporting to Master...")
       
       val doneMsg = s"${Messages.TYPE_DONE}${Messages.DELIMITER}".getBytes(StandardCharsets.UTF_8)
       net.send(masterId, doneMsg)
       
-      println(s"[Worker $id] Waiting for ALL_DONE signal from Master...")
+      Logger.info("Waiting for ALL_DONE signal...")
     }
   }
   
   private def handleAllDone(): Unit = {
-    println(s"[Worker $id] Received ALL_DONE. Exiting gracefully.")
+    Logger.info("Received ALL_DONE. Exiting.")
     net.stop()
     System.exit(0)
   }

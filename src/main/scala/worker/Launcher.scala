@@ -1,12 +1,16 @@
 package worker
 
 import network.NettyImplementation
+import common.Logger
 import java.io.File
 import scala.util.Random
 
 object Launcher {
   def main(args: Array[String]): Unit = {
-    // 인자 검사: worker <masterIP:port> -I ... -O ...
+    // 워커 로그 파일 시작
+    Logger.init("worker.log")
+    Logger.info(s"Worker started with args: ${args.mkString(" ")}")
+
     if (args.length < 4) {
       println("Usage: worker <masterIP:port> -I <input directory> ... -O <output directory>")
       return
@@ -47,12 +51,10 @@ object Launcher {
       return
     }
 
-    // [수정] ID는 -1 (미정)
     val id = -1
-    // 포트는 충돌 방지를 위해 50000~60000 사이 랜덤 할당
     val myPort = 50000 + Random.nextInt(10000)
     
-    println(s"[Worker] Starting on port $myPort (Requesting ID from Master...)")
+    Logger.info(s"Starting on port $myPort (Requesting ID from Master...)")
     
     val net = new NettyImplementation(id, myPort)
     val runtime = new WorkerRuntime(id, net, inputDirs, outputDir, 0, masterHost, masterPort)
@@ -63,6 +65,8 @@ object Launcher {
       Thread.currentThread().join()
     } catch {
       case e: InterruptedException => e.printStackTrace()
+    } finally {
+      Logger.close()
     }
   }
 }

@@ -13,6 +13,7 @@ import java.net.InetSocketAddress
 import java.util.concurrent.{ConcurrentHashMap, LinkedBlockingQueue}
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.concurrent.TrieMap
+import common.{Messages, Logger}
 import common.Messages._
 
 class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
@@ -21,14 +22,13 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
   private val MASTER_ID = 0
   private val workerIdCounter = new AtomicInteger(1)
 
-  // UDP 관련
+  // UDP
   private val sendQueue = new LinkedBlockingQueue[(Int, String, Array[Byte])]()
-  // (targetId, data, lastSentTime, retryCount)
   private val unAckedMessages = new ConcurrentHashMap[String, (Int, Array[Byte], Long, Int)]()
   private val udpGroup = new NioEventLoopGroup()
   private var udpChannel: Channel = _
 
-  // TCP 관련
+  // TCP
   private val tcpGroup = new NioEventLoopGroup()
   private val bossGroup = new NioEventLoopGroup()
   private var tcpChannel: Channel = _             
@@ -42,11 +42,11 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
     
     if (myId == MASTER_ID) {
       startTcpServer()
-      println(s"[Netty] Master bound to TCP port $myPort")
+      Logger.info(s"[Netty] Master bound to TCP port $myPort")
     } else {
       startUdpServer()
       startBackgroundThreads()
-      println(s"[Netty] Worker bound to UDP port $myPort (Waiting for ID assignment...)")
+      Logger.info(s"[Netty] Worker bound to UDP port $myPort")
     }
   }
 
@@ -62,7 +62,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
       if (targetId == MASTER_ID) {
         if (masterChannel != null && masterChannel.isActive) sendTcpPacket(masterChannel, data)
       } else if (targetId == myId) {
-        // Loopback: 즉시 처리
         if (appHandler != null) appHandler(myId, data)
       } else {
         val msgId = java.util.UUID.randomUUID().toString
@@ -109,17 +108,16 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
     val remoteIp = ctx.channel().remoteAddress().asInstanceOf[InetSocketAddress].getAddress.getHostAddress
     
     if (reqId == -1) {
-      // [재접속 로직] 기존에 같은 IP로 접속했던 ID가 있는지 확인
       val existingId = peers.find { case (_, addr) => 
         addr.getAddress.getHostAddress == remoteIp 
       }.map(_._1).getOrElse(-1)
 
       if (existingId != -1) {
         reqId = existingId
-        println(s"[Master] Worker re-connected from $remoteIp. Reassigning ID: $reqId")
+        Logger.info(s"[Master] Worker re-connected from $remoteIp. Reassigning ID: $reqId")
       } else {
         reqId = workerIdCounter.getAndIncrement()
-        println(s"[Master] New Worker connected from $remoteIp. Assigning ID: $reqId")
+        Logger.info(s"[Master] New Worker connected from $remoteIp. Assigning ID: $reqId")
       }
       
       val response = s"$TYPE_REGISTER_RESPONSE$DELIMITER$reqId"
@@ -141,7 +139,10 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
     
     sendTcpPacket(ctx.channel(), sb.toString().getBytes(CharsetUtil.UTF_8))
     
-    if (appHandler != null) appHandler(reqId, msgStr.getBytes(CharsetUtil.UTF_8))
+    if (appHandler != null) {
+      val msgWithIp = s"$msgStr$DELIMITER$remoteIp"
+      appHandler(reqId, msgWithIp.getBytes(CharsetUtil.UTF_8))
+    }
   }
 
   private def startTcpClient(host: String, port: Int): Unit = {
@@ -161,7 +162,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
               else if (str.startsWith(TYPE_REGISTER_RESPONSE)) {
                 val newId = str.trim.split(DELIMITER)(1).toInt
                 NettyImplementation.this.myId = newId
-                println(s"[Netty] Assigned Worker ID: $newId")
                 if (appHandler != null) appHandler(MASTER_ID, bytes)
               }
               else if (appHandler != null) appHandler(MASTER_ID, bytes)
@@ -192,7 +192,7 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
     val pip = parts(2)
     val pport = parts(3).toInt
     peers.put(pid, new InetSocketAddress(pip, pport))
-    println(s"[Netty] Peer $pid joined.")
+    Logger.info(s"Peer $pid joined.")
   }
 
   private def sendTcpPacket(ch: Channel, data: Array[Byte]): Unit = {
@@ -224,7 +224,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
   }
 
   private def startBackgroundThreads(): Unit = {
-    // [1] Sender Thread
     new Thread(() => {
       while (!Thread.currentThread().isInterrupted) {
         val (targetId, msgId, data) = sendQueue.take()
@@ -238,7 +237,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
       }
     }, "UDP-Sender").start()
 
-    // [2] Retry Thread (Base Timeout 5초 + Exponential Backoff)
     new Thread(() => {
       while (!Thread.currentThread().isInterrupted) {
         Thread.sleep(100) 
@@ -249,7 +247,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
           val msgId = entry.getKey
           val (targetId, data, lastSent, retryCount) = entry.getValue
           
-          // [수정] 기본 타임아웃 5초
           val TIMEOUT_BASE = 5000L
           val backoff = Math.min(TIMEOUT_BASE * Math.pow(2, retryCount).toLong, 60000L)
           
@@ -290,7 +287,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
         unAckedMessages.remove(msgId)
       } 
       else if (typeStr == TYPE_DATA || typeStr == TYPE_FIN) {
-        // [1] 데이터 처리 (Blocking: 저장될 때까지 대기)
         val headerLen = thirdColon + 1
         val payload = new Array[Byte](bytes.length - headerLen)
         System.arraycopy(bytes, headerLen, payload, 0, payload.length)
@@ -299,7 +295,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
            appHandler(senderId, payload)
         }
 
-        // [2] 처리가 완료된 후에만 ACK 전송
         val addr = peers.get(senderId).orNull
         if (addr != null || senderId == myId) {
            val header = s"$TYPE_ACK$DELIMITER$myId$DELIMITER$msgId$DELIMITER"
