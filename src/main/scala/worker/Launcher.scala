@@ -3,11 +3,14 @@ package worker
 import network.NettyImplementation
 import java.io.File
 import java.net.InetSocketAddress
+import org.slf4j.LoggerFactory
 
 object Launcher {
+  private val logger = LoggerFactory.getLogger(getClass)
+  
   def main(args: Array[String]): Unit = {
     if (args.length < 4) {
-      println("Usage: worker <id> <masterHost> <masterPort> -I <input> -O <output>")
+      logger.error("Usage: worker <id> <masterHost> <masterPort> -I <input> -O <output>")
       return
     }
 

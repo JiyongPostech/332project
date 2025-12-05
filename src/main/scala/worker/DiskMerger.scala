@@ -3,8 +3,11 @@ package worker
 import common.Record
 import java.io._
 import java.util.PriorityQueue
+import org.slf4j.LoggerFactory
 
 class DiskMerger {
+  private val logger = LoggerFactory.getLogger(getClass)
+  
   case class Entry(record: Record, iter: Iterator[Record]) extends Comparable[Entry] {
     override def compareTo(o: Entry): Int = this.record.compare(o.record)
   }
@@ -31,6 +34,6 @@ class DiskMerger {
     } finally {
       bos.close()
     }
-    println(s"[Merger] Result saved to ${outputFile.getAbsolutePath}")
+    logger.info(s"Result saved to ${outputFile.getAbsolutePath}")
   }
 }

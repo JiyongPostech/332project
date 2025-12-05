@@ -7,9 +7,10 @@ import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.util.Arrays
 import scala.collection.mutable.ArrayBuffer
+import org.slf4j.LoggerFactory
 
 class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDir: File, masterId: Int, masterHost: String, masterPort: Int) {
-  
+  private val logger = LoggerFactory.getLogger(getClass)
   private val sorter = new DataSorter(new File(outputDir, "tmp"))
   private val merger = new DiskMerger()
   private var finishedPeers = Set[Int]()
@@ -49,7 +50,7 @@ class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDi
       }
     }
     
-    println(s"[Worker $id] Connecting to Master ($masterHost:$masterPort)...")
+    logger.info(s"Worker $id connecting to Master ($masterHost:$masterPort)...")
     net.connect(masterHost, masterPort)
     
     // 연결 안정화 대기 후 샘플 전송
@@ -58,7 +59,7 @@ class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDi
   }
 
   private def sendSamples(): Unit = {
-    println(s"[Worker $id] Sampling data...")
+    logger.info(s"Worker $id sampling data...")
     val samples = new ArrayBuffer[Byte]()
     
     inputDirs.foreach { dir =>
@@ -78,7 +79,7 @@ class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDi
     val packet = headerBytes ++ samples.toArray
     
     net.send(masterId, packet)
-    println(s"[Worker $id] Sent ${samples.size / 10} samples to Master.")
+    logger.info(s"Worker $id sent ${samples.size / 10} samples to Master")
   }
 
   private def handleKeyRange(payload: Array[Byte], headerStr: String): Unit = {
@@ -96,12 +97,12 @@ class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDi
       pivots(i) = p
     }
     
-    println(s"[Worker $id] Received Key Range. Total workers: $totalPeers, Pivots: $numPivots")
+    logger.info(s"Worker $id received Key Range. Total workers: $totalPeers, Pivots: $numPivots")
     startShuffle()
   }
 
   private def startShuffle(): Unit = {
-    println(s"[Worker $id] Starting Shuffle (Streaming)...")
+    logger.info(s"Worker $id starting Shuffle (Streaming)...")
     
     inputDirs.foreach { dir =>
       if(dir.exists()) dir.listFiles().filter(_.isFile).foreach { file =>
@@ -134,10 +135,10 @@ class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDi
     if (finishedPeers.contains(senderId)) return
     
     finishedPeers += senderId
-    println(s"[Worker $id] Received FIN from Worker $senderId (${finishedPeers.size}/$totalPeers)")
+    logger.info(s"Worker $id received FIN from Worker $senderId (${finishedPeers.size}/$totalPeers)")
     
     if (finishedPeers.size == totalPeers) {
-      println(s"[Worker $id] Shuffle complete. Starting Local Merge...")
+      logger.info(s"Worker $id shuffle complete. Starting Local Merge...")
       sorter.close() 
       
       if (!outputDir.exists()) outputDir.mkdirs()
@@ -145,17 +146,17 @@ class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDi
       
       merger.merge(sorter.tempFiles.toSeq, finalFile)
       
-      println(s"[Worker $id] Job Finished. Reporting to Master...")
+      logger.info(s"Worker $id job finished. Reporting to Master...")
       
       val doneMsg = s"${Messages.TYPE_DONE}${Messages.DELIMITER}".getBytes(StandardCharsets.UTF_8)
       net.send(masterId, doneMsg)
       
-      println(s"[Worker $id] Waiting for ALL_DONE signal from Master...")
+      logger.info(s"Worker $id waiting for ALL_DONE signal from Master...")
     }
   }
   
   private def handleAllDone(): Unit = {
-    println(s"[Worker $id] Received ALL_DONE. Exiting gracefully.")
+    logger.info(s"Worker $id received ALL_DONE. Exiting gracefully")
     net.stop()
     System.exit(0)
   }

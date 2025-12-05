@@ -5,8 +5,10 @@ import common.Messages
 import java.nio.charset.StandardCharsets
 import java.util.Arrays
 import scala.collection.mutable
+import org.slf4j.LoggerFactory
 
 class MasterCoordinator(net: NetworkService, expectedWorkers: Int) {
+  private val logger = LoggerFactory.getLogger(getClass)
   private val connectedWorkers = mutable.Set[Int]()
   private val doneWorkers = mutable.Set[Int]()
   
@@ -28,7 +30,7 @@ class MasterCoordinator(net: NetworkService, expectedWorkers: Int) {
   }
 
   def start(): Unit = {
-    println(s"[Master] Started. Expecting $expectedWorkers workers.")
+    logger.info(s"Started. Expecting $expectedWorkers workers")
     
     net.bind { (senderId, payload) =>
       // 안전한 헤더 파싱 (길이 체크)
@@ -38,7 +40,7 @@ class MasterCoordinator(net: NetworkService, expectedWorkers: Int) {
         synchronized {
           connectedWorkers.add(senderId)
           if (connectedWorkers.size == expectedWorkers) {
-            println(s"[Master] All $expectedWorkers workers registered.")
+            logger.info(s"All $expectedWorkers workers registered")
           }
         }
       }
@@ -57,7 +59,7 @@ class MasterCoordinator(net: NetworkService, expectedWorkers: Int) {
                  samples += data.slice(i * 10, (i + 1) * 10)
                }
                sampledWorkers.add(senderId)
-               println(s"[Master] Received samples from Worker $senderId (${sampledWorkers.size}/$expectedWorkers)")
+               logger.info(s"Received samples from Worker $senderId (${sampledWorkers.size}/$expectedWorkers)")
                
                // [2] 모든 워커의 샘플이 도착했는지 확인 (Deadlock 방지)
                if (sampledWorkers.size == expectedWorkers) {
@@ -71,11 +73,11 @@ class MasterCoordinator(net: NetworkService, expectedWorkers: Int) {
         // [3] 완료 보고 수신
         synchronized {
           doneWorkers.add(senderId)
-          println(s"[Master] Worker $senderId finished. (${doneWorkers.size}/$expectedWorkers)")
+          logger.info(s"Worker $senderId finished (${doneWorkers.size}/$expectedWorkers)")
           
           // [4] 모든 워커 완료 시 해산 명령 (ALL_DONE)
           if (doneWorkers.size == expectedWorkers) {
-            println("[Master] All tasks completed. Broadcasting ALL_DONE...")
+            logger.info("All tasks completed. Broadcasting ALL_DONE...")
             val allDoneMsg = s"${Messages.TYPE_ALL_DONE}${Messages.DELIMITER}".getBytes(StandardCharsets.UTF_8)
             
             for (wid <- 1 to expectedWorkers) {
@@ -85,7 +87,7 @@ class MasterCoordinator(net: NetworkService, expectedWorkers: Int) {
             // 잠시 대기 후 마스터 종료
             new Thread(() => {
               Thread.sleep(2000) 
-              println("[Master] Shutdown.")
+              logger.info("Shutdown")
               net.stop()
               System.exit(0)
             }).start()
@@ -101,7 +103,7 @@ class MasterCoordinator(net: NetworkService, expectedWorkers: Int) {
     if (rangesDistributed) return
     rangesDistributed = true
     
-    println(s"[Master] Computing key ranges from ${samples.size} samples...")
+    logger.info(s"Computing key ranges from ${samples.size} samples...")
     
     // 1. 샘플 정렬
     val sortedSamples = samples.sortWith { (a, b) => 
@@ -135,6 +137,6 @@ class MasterCoordinator(net: NetworkService, expectedWorkers: Int) {
     for (wid <- 1 to expectedWorkers) {
       net.send(wid, packet)
     }
-    println(s"[Master] Broadcasted ranges (Pivots: $numPivots).")
+    logger.info(s"Broadcasted ranges (Pivots: $numPivots)")
   }
 }

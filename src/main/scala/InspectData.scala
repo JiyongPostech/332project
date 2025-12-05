@@ -1,7 +1,10 @@
 import java.io._
 import common.Record
+import org.slf4j.LoggerFactory
 
 object InspectData {
+  private val logger = LoggerFactory.getLogger(getClass)
+  
   def main(args: Array[String]): Unit = {
     val files = Seq(
       new File("data/output1/partition.1"),
@@ -11,13 +14,13 @@ object InspectData {
 
     files.foreach { file =>
       if (file.exists()) {
-        println(s"\n==================================================")
-        println(s" 📂 File: ${file.getPath}")
-        println(s" 📦 Size: ${file.length()} bytes")
-        println(s"==================================================")
+        logger.info("==================================================")
+        logger.info(s"File: ${file.getPath}")
+        logger.info(s"Size: ${file.length()} bytes")
+        logger.info("==================================================")
         printContent(file)
       } else {
-        println(s"❌ File not found: ${file.getPath}")
+        logger.warn(s"File not found: ${file.getPath}")
       }
     }
   }
@@ -47,16 +50,16 @@ object InspectData {
       bis.close()
     }
 
-    println(s"📊 Total Records: $count")
-    println(s"⬇️  First 5 Keys (Hex):")
+    logger.info(s"Total Records: $count")
+    logger.info("First 5 Keys (Hex):")
     headRecords.zipWithIndex.foreach { case (hex, idx) =>
-      println(s"   [$idx] $hex")
+      logger.info(s"   [$idx] $hex")
     }
     
     if (count > 5) {
-      println("   ...")
-      println(s"⬇️  Last Key (Hex):")
-      println(s"   [${count-1}] $lastRecordHex")
+      logger.info("   ...")
+      logger.info("Last Key (Hex):")
+      logger.info(s"   [${count-1}] $lastRecordHex")
     }
   }
 

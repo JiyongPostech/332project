@@ -2,11 +2,14 @@ package master
 
 import network.NettyImplementation
 import java.net.InetSocketAddress
+import org.slf4j.LoggerFactory
 
 object Launcher {
+  private val logger = LoggerFactory.getLogger(getClass)
+  
   def main(args: Array[String]): Unit = {
     if (args.length < 1) {
-      println("Usage: master <number of workers>")
+      logger.error("Usage: master <number of workers>")
       return
     }
     

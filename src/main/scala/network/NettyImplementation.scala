@@ -8,6 +8,7 @@ import io.netty.channel.socket.{DatagramPacket, SocketChannel}
 import io.netty.channel.socket.nio.{NioDatagramChannel, NioServerSocketChannel, NioSocketChannel}
 import io.netty.handler.codec.{LengthFieldBasedFrameDecoder, LengthFieldPrepender}
 import io.netty.util.CharsetUtil
+import org.slf4j.LoggerFactory
 
 import java.net.InetSocketAddress
 import java.util.concurrent.{ConcurrentHashMap, LinkedBlockingQueue}
@@ -15,6 +16,7 @@ import scala.collection.concurrent.TrieMap
 import common.Messages._
 
 class NettyImplementation(myId: Int, myPort: Int) extends NetworkService {
+  private val logger = LoggerFactory.getLogger(getClass)
 
   private val peers = TrieMap[Int, InetSocketAddress]()
   private val MASTER_ID = 0
@@ -39,11 +41,11 @@ class NettyImplementation(myId: Int, myPort: Int) extends NetworkService {
     
     if (myId == MASTER_ID) {
       startTcpServer()
-      println(s"[Netty] Master bound to TCP port $myPort")
+      logger.info(s"Master bound to TCP port $myPort")
     } else {
       startUdpServer()
       startBackgroundThreads()
-      println(s"[Netty] Worker $myId bound to UDP port $myPort")
+      logger.info(s"Worker $myId bound to UDP port $myPort")
     }
   }
 
@@ -126,7 +128,7 @@ class NettyImplementation(myId: Int, myPort: Int) extends NetworkService {
     peers.put(workerId, newPeerAddr)
     
     sendTcpPacket(ctx.channel(), sb.toString().getBytes(CharsetUtil.UTF_8))
-    println(s"[Master] Worker $workerId registered ($remoteIp:$udpPort).")
+    logger.info(s"Worker $workerId registered ($remoteIp:$udpPort)")
     
     if (appHandler != null) appHandler(workerId, msgStr.getBytes(CharsetUtil.UTF_8))
   }
@@ -173,7 +175,7 @@ class NettyImplementation(myId: Int, myPort: Int) extends NetworkService {
     val pip = parts(2)
     val pport = parts(3).toInt
     peers.put(pid, new InetSocketAddress(pip, pport))
-    println(s"[Netty] Peer $pid joined.")
+    logger.info(s"Peer $pid joined")
   }
 
   private def sendTcpPacket(ch: Channel, data: Array[Byte]): Unit = {
