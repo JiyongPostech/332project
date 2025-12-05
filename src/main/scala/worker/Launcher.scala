@@ -2,23 +2,28 @@ package worker
 
 import network.NettyImplementation
 import java.io.File
-import java.net.InetSocketAddress
+import scala.util.Random
 
 object Launcher {
   def main(args: Array[String]): Unit = {
+    // 인자 검사: worker <masterIP:port> -I ... -O ...
     if (args.length < 4) {
-      println("Usage: worker <id> <masterHost> <masterPort> -I <input> -O <output>")
+      println("Usage: worker <masterIP:port> -I <input directory> ... -O <output directory>")
       return
     }
 
-    val id = args(0).toInt
-    val masterHost = args(1)
-    val masterPort = args(2).toInt
-    
+    val masterAddress = args(0).split(":")
+    if (masterAddress.length != 2) {
+      println("Error: Master address must be in format <IP>:<Port>")
+      return
+    }
+    val masterHost = masterAddress(0)
+    val masterPort = masterAddress(1).toInt
+
     var inputDirs = Seq[File]()
     var outputDir: File = null
     
-    var i = 3
+    var i = 1
     while (i < args.length) {
       args(i) match {
         case "-I" =>
@@ -29,16 +34,27 @@ object Launcher {
           }
         case "-O" =>
           i += 1
-          outputDir = new File(args(i))
-          i += 1
+          if (i < args.length) {
+            outputDir = new File(args(i))
+            i += 1
+          }
         case _ => i += 1
       }
     }
+
+    if (inputDirs.isEmpty || outputDir == null) {
+      println("Error: Input(-I) and Output(-O) directories are required.")
+      return
+    }
+
+    // [수정] ID는 -1 (미정)
+    val id = -1
+    // 포트는 충돌 방지를 위해 50000~60000 사이 랜덤 할당
+    val myPort = 50000 + Random.nextInt(10000)
     
-    val myPort = 50000 + id
-    val net = new NettyImplementation(id, myPort) 
+    println(s"[Worker] Starting on port $myPort (Requesting ID from Master...)")
     
-    // [수정] masterHost, masterPort 전달
+    val net = new NettyImplementation(id, myPort)
     val runtime = new WorkerRuntime(id, net, inputDirs, outputDir, 0, masterHost, masterPort)
     
     runtime.start()
