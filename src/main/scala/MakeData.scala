@@ -1,10 +1,7 @@
 import java.io._
 import scala.util.Random
-import org.slf4j.LoggerFactory
 
 object MakeData {
-  private val logger = LoggerFactory.getLogger(getClass)
-  
   def main(args: Array[String]): Unit = {
     // 폴더 생성
     new File("data/input1").mkdirs()
@@ -24,7 +21,7 @@ object MakeData {
     createFile("data/input3/file1.dat", 1000)
     createFile("data/input3/file2.dat", 1000)
     
-    logger.info("테스트 데이터 생성 완료!")
+    println("테스트 데이터 생성 완료!")
   }
 
   def createFile(path: String, count: Int): Unit = {
@@ -39,6 +36,6 @@ object MakeData {
     } finally {
       bos.close()
     }
-    logger.info(s"Created $path")
+    println(s"Created $path")
   }
 }

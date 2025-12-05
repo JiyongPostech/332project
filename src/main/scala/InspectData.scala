@@ -1,70 +1,44 @@
-import java.io._
+import java.io.File
+import worker.FileIO
 import common.Record
-import org.slf4j.LoggerFactory
 
-object InspectData {
-  private val logger = LoggerFactory.getLogger(getClass)
+object InspectData extends App {
   
-  def main(args: Array[String]): Unit = {
-    val files = Seq(
-      new File("data/output1/partition.1"),
-      new File("data/output2/partition.2"),
-      new File("data/output3/partition.3")
-    )
+  val fileRange = 1 to 10
+  var totalOutputRecords = 0L // [추가] 총 레코드 수 카운터
 
-    files.foreach { file =>
-      if (file.exists()) {
-        logger.info("==================================================")
-        logger.info(s"File: ${file.getPath}")
-        logger.info(s"Size: ${file.length()} bytes")
-        logger.info("==================================================")
-        printContent(file)
-      } else {
-        logger.warn(s"File not found: ${file.getPath}")
-      }
-    }
-  }
-
-  def printContent(file: File): Unit = {
-    val bis = new BufferedInputStream(new FileInputStream(file))
-    val buffer = new Array[Byte](Record.SIZE)
-    var count = 0
+  println("--- Partition Inspection ---")
+  
+  fileRange.foreach { i =>
+    val fileName = s"output/partition.$i" 
+    val file = new File(fileName)
     
-    // 앞부분 5개 저장용
-    val headRecords = new scala.collection.mutable.ListBuffer[String]()
-    // 마지막 레코드 저장용
-    var lastRecordHex: String = ""
-
-    try {
-      while (bis.read(buffer) == Record.SIZE) {
-        count += 1
-        val keyBytes = buffer.slice(0, 10) // Key 10바이트만 추출
-        val keyHex = bytesToHex(keyBytes)
+    if (file.exists()) {
+      println(s"========================================")
+      println(s" Inspecting: $fileName")
+      
+      // FileIO.readRecords는 Iterator를 반환하므로 .toSeq로 메모리에 로드
+      val records = FileIO.readRecords(file).toSeq 
+      
+      if (records.nonEmpty) {
+        println(s" Record Count: ${records.size}")
+        totalOutputRecords += records.size // [핵심] 총합에 더함
         
-        if (count <= 5) {
-          headRecords += keyHex
+        println(" First 5 Keys (Hex):")
+        records.take(5).zipWithIndex.foreach { case (rec, index) =>
+          println(s"  [${index}] ${rec.key.map("%02X".format(_)).mkString}")
         }
-        lastRecordHex = keyHex
+        println(s" Last Key (Hex): ${records.last.key.map("%02X".format(_)).mkString}")
+      } else {
+        println(" Empty file.")
       }
-    } finally {
-      bis.close()
-    }
-
-    logger.info(s"Total Records: $count")
-    logger.info("First 5 Keys (Hex):")
-    headRecords.zipWithIndex.foreach { case (hex, idx) =>
-      logger.info(s"   [$idx] $hex")
-    }
-    
-    if (count > 5) {
-      logger.info("   ...")
-      logger.info("Last Key (Hex):")
-      logger.info(s"   [${count-1}] $lastRecordHex")
+    } else {
+      // 파일이 없을 경우 출력하지 않음
     }
   }
 
-  // 바이트 배열을 16진수 문자열로 변환 (보기 좋게)
-  def bytesToHex(bytes: Array[Byte]): String = {
-    bytes.map("%02X".format(_)).mkString(" ")
-  }
+  // [추가] 최종적으로 총 레코드 수 출력
+  println("\n========================================")
+  println(s"✅ Total Output Records: $totalOutputRecords")
+  println("========================================")
 }

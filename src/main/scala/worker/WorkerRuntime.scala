@@ -1,24 +1,23 @@
 package worker
 
-import common.{Record, Messages}
+import common.{Record, Messages, Logger}
 import network.NetworkService
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.util.Arrays
-import scala.collection.mutable.ArrayBuffer
-import org.slf4j.LoggerFactory
+import scala.collection.mutable.{ArrayBuffer, Map => MutableMap}
 
-class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDir: File, masterId: Int, masterHost: String, masterPort: Int) {
-  private val logger = LoggerFactory.getLogger(getClass)
+class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outputDir: File, masterId: Int, masterHost: String, masterPort: Int) {
+  
+  private val idLatch = new java.util.concurrent.CountDownLatch(1)
   private val sorter = new DataSorter(new File(outputDir, "tmp"))
   private val merger = new DiskMerger()
   private var finishedPeers = Set[Int]()
   
-  private var totalPeers = 0
+  private var totalPartitions = 0 // [수정] 총 파티션 수 (P)
   private var pivots: Array[Array[Byte]] = _ 
 
-  // Java 8 호환 Unsigned Byte 비교 함수
   private def compareUnsigned(a: Array[Byte], b: Array[Byte]): Int = {
     val len = Math.min(a.length, b.length)
     var i = 0
@@ -38,7 +37,13 @@ class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDi
       val headerStr = if (payload.length >= 50) new String(payload.take(50), StandardCharsets.UTF_8) else new String(payload, StandardCharsets.UTF_8)
       
       if (senderId == masterId) {
-        if (headerStr.startsWith(Messages.TYPE_RANGE)) {
+        if (headerStr.startsWith(Messages.TYPE_REGISTER_RESPONSE)) {
+           val newId = headerStr.trim.split(Messages.DELIMITER)(1).toInt
+           this.id = newId
+           Logger.info(s"Assigned ID: $id")
+           idLatch.countDown() 
+        }
+        else if (headerStr.startsWith(Messages.TYPE_RANGE)) {
            handleKeyRange(payload, headerStr)
         } 
         else if (headerStr.startsWith(Messages.TYPE_ALL_DONE)) {
@@ -46,30 +51,44 @@ class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDi
         }
       } else {
         if (headerStr.startsWith(Messages.TYPE_FIN)) handleFin(senderId)
-        else if (payload.length == Record.SIZE) sorter.addRecord(Record(payload))
+        else {
+          if (payload.length > 0 && payload.length % Record.SIZE == 0) {
+             var offset = 0
+             while (offset < payload.length) {
+                val recBytes = Arrays.copyOfRange(payload, offset, offset + Record.SIZE)
+                sorter.addRecord(Record(recBytes))
+                offset += Record.SIZE
+             }
+          }
+        }
       }
     }
     
-    logger.info(s"Worker $id connecting to Master ($masterHost:$masterPort)...")
+    Logger.info(s"Connecting to Master ($masterHost:$masterPort)...")
     net.connect(masterHost, masterPort)
     
-    // 연결 안정화 대기 후 샘플 전송
+    Logger.info("Waiting for ID assignment...")
+    idLatch.await()
+    Logger.info(s"ID $id assigned. Starting pipeline.")
+
     Thread.sleep(500)
     sendSamples()
   }
 
   private def sendSamples(): Unit = {
-    logger.info(s"Worker $id sampling data...")
+    Logger.info("Sampling data...")
     val samples = new ArrayBuffer[Byte]()
     
     inputDirs.foreach { dir =>
-       if(dir.exists()) dir.listFiles().filter(_.isFile).foreach { f =>
-         val it = FileIO.readRecords(f)
-         var count = 0
-         // 각 파일당 앞 1000개 레코드 샘플링
-         while(it.hasNext && count < 1000) {
-           samples ++= it.next().key
-           count += 1
+       if(dir.exists()) {
+         val files = if (dir.isDirectory) dir.listFiles().filter(_.isFile) else Array(dir)
+         files.foreach { f =>
+           val it = FileIO.readRecords(f)
+           var count = 0
+           while(it.hasNext && count < 1000) {
+             samples ++= it.next().key
+             count += 1
+           }
          }
        }
     }
@@ -79,7 +98,7 @@ class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDi
     val packet = headerBytes ++ samples.toArray
     
     net.send(masterId, packet)
-    logger.info(s"Worker $id sent ${samples.size / 10} samples to Master")
+    Logger.info(s"Sent samples to Master.")
   }
 
   private def handleKeyRange(payload: Array[Byte], headerStr: String): Unit = {
@@ -87,8 +106,8 @@ class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDi
     val bodyBytes = payload.drop(delimiterIdx + 1)
     val buf = ByteBuffer.wrap(bodyBytes)
     
-    totalPeers = buf.getInt
-    val numPivots = totalPeers - 1
+    totalPartitions = buf.getInt // 총 파티션 수 (W=P) 수신
+    val numPivots = totalPartitions - 1
     
     pivots = new Array[Array[Byte]](numPivots)
     for (i <- 0 until numPivots) {
@@ -97,26 +116,48 @@ class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDi
       pivots(i) = p
     }
     
-    logger.info(s"Worker $id received Key Range. Total workers: $totalPeers, Pivots: $numPivots")
+    Logger.info(s"Received Key Range. Total Partitions: $totalPartitions, Pivots: $numPivots")
     startShuffle()
   }
 
   private def startShuffle(): Unit = {
-    logger.info(s"Worker $id starting Shuffle (Streaming)...")
+    Logger.info("Starting Shuffle...")
+    
+    val sendBuffers = MutableMap[Int, ArrayBuffer[Byte]]()
+    val BATCH_SIZE = 64 * 1024 
     
     inputDirs.foreach { dir =>
-      if(dir.exists()) dir.listFiles().filter(_.isFile).foreach { file =>
-        val iter = FileIO.readRecords(file)
-        while (iter.hasNext) {
-          val rec = iter.next()
-          val targetId = getTargetWorker(rec.key)
-          net.send(targetId, rec.toBytes)
+      if(dir.exists()) {
+        val files = if (dir.isDirectory) dir.listFiles().filter(_.isFile) else Array(dir)
+        files.foreach { file =>
+          val iter = FileIO.readRecords(file)
+          while (iter.hasNext) {
+            val rec = iter.next()
+            val targetId = getTargetWorker(rec.key)
+            
+            val buf = sendBuffers.getOrElseUpdate(targetId, new ArrayBuffer[Byte](BATCH_SIZE + Record.SIZE))
+            buf ++= rec.toBytes
+            
+            if (buf.size >= BATCH_SIZE) {
+               net.send(targetId, buf.toArray)
+               buf.clear()
+            }
+          }
         }
       }
     }
     
+    // 남은 버퍼 모두 전송 (Flush)
+    sendBuffers.foreach { case (tid, buf) =>
+      if (buf.nonEmpty) {
+        net.send(tid, buf.toArray)
+        buf.clear()
+      }
+    }
+    
+    // FIN 전송: 총 워커 수(2명)에게만 FIN 전송
     val finPacket = s"${Messages.TYPE_FIN}${Messages.DELIMITER}".getBytes(StandardCharsets.UTF_8)
-    for (pid <- 1 to totalPeers if pid != id) {
+    for (pid <- 1 to totalPartitions if pid != id) { // totalPartitions = numWorkers
       net.send(pid, finPacket)
     }
     handleFin(id)
@@ -125,38 +166,39 @@ class WorkerRuntime(id: Int, net: NetworkService, inputDirs: Seq[File], outputDi
   private def getTargetWorker(key: Array[Byte]): Int = {
     for (i <- 0 until pivots.length) {
       if (compareUnsigned(key, pivots(i)) < 0) {
-        return i + 1
+        return i + 1 
       }
     }
-    return totalPeers
+    return totalPartitions // Partition ID: W
   }
 
   private def handleFin(senderId: Int): Unit = synchronized {
     if (finishedPeers.contains(senderId)) return
     
     finishedPeers += senderId
-    logger.info(s"Worker $id received FIN from Worker $senderId (${finishedPeers.size}/$totalPeers)")
+    Logger.info(s"Received FIN from Worker $senderId (${finishedPeers.size}/$totalPartitions)")
     
-    if (finishedPeers.size == totalPeers) {
-      logger.info(s"Worker $id shuffle complete. Starting Local Merge...")
+    if (finishedPeers.size == totalPartitions) { // W명이 모두 FIN을 보냄
+      Logger.info("Shuffle complete. Starting Local Merge...")
       sorter.close() 
       
       if (!outputDir.exists()) outputDir.mkdirs()
+      // [복구] partition.$id 파일 하나만 생성
       val finalFile = new File(outputDir, s"partition.$id")
       
       merger.merge(sorter.tempFiles.toSeq, finalFile)
       
-      logger.info(s"Worker $id job finished. Reporting to Master...")
+      Logger.info("Job Finished. Reporting to Master...")
       
       val doneMsg = s"${Messages.TYPE_DONE}${Messages.DELIMITER}".getBytes(StandardCharsets.UTF_8)
       net.send(masterId, doneMsg)
       
-      logger.info(s"Worker $id waiting for ALL_DONE signal from Master...")
+      Logger.info("Waiting for ALL_DONE signal...")
     }
   }
   
   private def handleAllDone(): Unit = {
-    logger.info(s"Worker $id received ALL_DONE. Exiting gracefully")
+    Logger.info("Received ALL_DONE. Exiting.")
     net.stop()
     System.exit(0)
   }

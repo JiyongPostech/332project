@@ -1,22 +1,102 @@
 package master
 
+import common.{Messages, Record, Logger}
 import network.NetworkService
-import common.Messages
 import java.nio.charset.StandardCharsets
 import java.util.Arrays
-import scala.collection.mutable
-import org.slf4j.LoggerFactory
+import scala.collection.mutable.{ArrayBuffer, Map => MutableMap}
 
-class MasterCoordinator(net: NetworkService, expectedWorkers: Int) {
-  private val logger = LoggerFactory.getLogger(getClass)
-  private val connectedWorkers = mutable.Set[Int]()
-  private val doneWorkers = mutable.Set[Int]()
+class MasterCoordinator(net: NetworkService, numWorkers: Int) { 
   
-  // 샘플링 관련 상태
-  private val samples = mutable.ArrayBuffer[Array[Byte]]() 
-  private val sampledWorkers = mutable.Set[Int]()
+  // [복구] 총 파티션 수는 워커 수와 동일하게 설정 (1 Worker = 1 Partition)
+  private val TOTAL_PARTITIONS = numWorkers 
 
-  // Java 8 호환 Unsigned Byte 비교 함수
+  private val registeredWorkers = MutableMap[Int, String]() 
+  private val samples = new ArrayBuffer[Array[Byte]]()
+  private val doneWorkers = new ArrayBuffer[Int]()
+  
+  Logger.info(s"Coordinator started. Expecting $numWorkers workers. TOTAL_PARTITIONS: $TOTAL_PARTITIONS")
+
+  def handleMessage(senderId: Int, payload: Array[Byte]): Unit = {
+    val str = new String(payload, StandardCharsets.UTF_8)
+    
+    if (str.startsWith(Messages.TYPE_REGISTER)) {
+       val parts = str.split(Messages.DELIMITER)
+       val workerIp = if (parts.length >= 4) parts(3) else "unknown"
+
+       if (!registeredWorkers.contains(senderId)) {
+         registeredWorkers(senderId) = workerIp
+         Logger.info(s"Worker $senderId registered ($workerIp)")
+         
+         if (registeredWorkers.size == numWorkers) {
+           val sortedIps = registeredWorkers.toSeq.sortBy(_._1).map(_._2).mkString(", ")
+           println(sortedIps)
+           Logger.info(s"All workers registered: $sortedIps")
+         }
+       }
+    }
+    else if (str.startsWith(Messages.TYPE_SAMPLE)) {
+       val dataPart = payload.drop(str.indexOf(Messages.DELIMITER) + 1)
+       samples.appendAll(dataPart.grouped(Record.SIZE / 10).map(_.take(10)))
+       
+       Logger.info(s"Received samples from Worker $senderId (${samples.size} keys total)")
+       
+       if (registeredWorkers.size == numWorkers && samples.size >= numWorkers * 10) { 
+          distributeKeyRanges()
+          samples.clear()
+       }
+    }
+    else if (str.startsWith(Messages.TYPE_DONE)) {
+       if (!doneWorkers.contains(senderId)) {
+         doneWorkers += senderId
+         Logger.info(s"Worker $senderId finished (${doneWorkers.size}/$numWorkers)")
+         
+         if (doneWorkers.size == numWorkers) {
+           Logger.info("All tasks completed. Sending ALL_DONE.")
+           val allDone = s"${Messages.TYPE_ALL_DONE}${Messages.DELIMITER}".getBytes(StandardCharsets.UTF_8)
+           registeredWorkers.keys.foreach { wid =>
+             net.send(wid, allDone)
+           }
+           Logger.info("Job completed successfully.")
+           System.exit(0)
+         }
+       }
+    }
+  }
+
+  private def distributeKeyRanges(): Unit = {
+    Logger.info(s"Computing $TOTAL_PARTITIONS key ranges...")
+    
+    val sortedSamples = samples.sortWith(compareUnsigned(_, _) < 0)
+    
+    // 피벗은 TOTAL_PARTITIONS 기준으로 (N-1개)
+    val numPivots = TOTAL_PARTITIONS - 1 
+    val pivots = new ArrayBuffer[Byte]()
+    
+    val step = sortedSamples.size / TOTAL_PARTITIONS
+    for (i <- 1 until TOTAL_PARTITIONS) {
+      val pivotIndex = i * step
+      if (pivotIndex < sortedSamples.size) {
+        pivots ++= sortedSamples(pivotIndex)
+      }
+    }
+    
+    val header = s"${Messages.TYPE_RANGE}${Messages.DELIMITER}"
+    val headerBytes = header.getBytes(StandardCharsets.UTF_8)
+    
+    // Body: TOTAL_PARTITIONS (4byte) + Pivots
+    val bodyBuf = java.nio.ByteBuffer.allocate(4 + pivots.size)
+    bodyBuf.putInt(TOTAL_PARTITIONS) 
+    bodyBuf.put(pivots.toArray)
+    
+    val packet = headerBytes ++ bodyBuf.array()
+    
+    registeredWorkers.keys.foreach { wid =>
+      net.send(wid, packet)
+    }
+    Logger.info(s"Broadcasted $TOTAL_PARTITIONS ranges.")
+  }
+  
   private def compareUnsigned(a: Array[Byte], b: Array[Byte]): Int = {
     val len = Math.min(a.length, b.length)
     var i = 0
@@ -27,116 +107,5 @@ class MasterCoordinator(net: NetworkService, expectedWorkers: Int) {
       i += 1
     }
     a.length - b.length
-  }
-
-  def start(): Unit = {
-    logger.info(s"Started. Expecting $expectedWorkers workers")
-    
-    net.bind { (senderId, payload) =>
-      // 안전한 헤더 파싱 (길이 체크)
-      val headerStr = if (payload.length >= 50) new String(payload.take(50), StandardCharsets.UTF_8) else new String(payload, StandardCharsets.UTF_8)
-      
-      if (headerStr.contains(Messages.TYPE_REGISTER)) {
-        synchronized {
-          connectedWorkers.add(senderId)
-          if (connectedWorkers.size == expectedWorkers) {
-            logger.info(s"All $expectedWorkers workers registered")
-          }
-        }
-      }
-      else if (headerStr.startsWith(Messages.TYPE_SAMPLE)) {
-        // [1] 샘플 수신
-        val delimiterIdx = headerStr.indexOf(Messages.DELIMITER)
-        if (delimiterIdx > 0) {
-          val headerLen = delimiterIdx + 1
-          val dataLen = payload.length - headerLen
-          
-          // 10바이트씩 잘라서 저장
-          if (dataLen > 0 && dataLen % 10 == 0) {
-             val data = payload.slice(headerLen, payload.length)
-             synchronized {
-               for (i <- 0 until dataLen / 10) {
-                 samples += data.slice(i * 10, (i + 1) * 10)
-               }
-               sampledWorkers.add(senderId)
-               logger.info(s"Received samples from Worker $senderId (${sampledWorkers.size}/$expectedWorkers)")
-               
-               // [2] 모든 워커의 샘플이 도착했는지 확인 (Deadlock 방지)
-               if (sampledWorkers.size == expectedWorkers) {
-                 distributeRanges()
-               }
-             }
-          }
-        }
-      }
-      else if (headerStr.startsWith(Messages.TYPE_DONE)) {
-        // [3] 완료 보고 수신
-        synchronized {
-          doneWorkers.add(senderId)
-          logger.info(s"Worker $senderId finished (${doneWorkers.size}/$expectedWorkers)")
-          
-          // [4] 모든 워커 완료 시 해산 명령 (ALL_DONE)
-          if (doneWorkers.size == expectedWorkers) {
-            logger.info("All tasks completed. Broadcasting ALL_DONE...")
-            val allDoneMsg = s"${Messages.TYPE_ALL_DONE}${Messages.DELIMITER}".getBytes(StandardCharsets.UTF_8)
-            
-            for (wid <- 1 to expectedWorkers) {
-               net.send(wid, allDoneMsg)
-            }
-            
-            // 잠시 대기 후 마스터 종료
-            new Thread(() => {
-              Thread.sleep(2000) 
-              logger.info("Shutdown")
-              net.stop()
-              System.exit(0)
-            }).start()
-          }
-        }
-      }
-    }
-  }
-
-  private var rangesDistributed = false
-  
-  private def distributeRanges(): Unit = synchronized {
-    if (rangesDistributed) return
-    rangesDistributed = true
-    
-    logger.info(s"Computing key ranges from ${samples.size} samples...")
-    
-    // 1. 샘플 정렬
-    val sortedSamples = samples.sortWith { (a, b) => 
-      compareUnsigned(a, b) < 0 
-    }
-    
-    // 2. 피벗(Pivot) 계산
-    val numPivots = expectedWorkers - 1
-    val pivots = new mutable.ArrayBuffer[Byte]()
-    
-    if (sortedSamples.nonEmpty && numPivots > 0) {
-      val step = sortedSamples.size / expectedWorkers
-      for (i <- 1 to numPivots) {
-        val pivotIndex = i * step
-        if (pivotIndex < sortedSamples.size) {
-          pivots ++= sortedSamples(pivotIndex)
-        }
-      }
-    }
-    
-    // 3. 메시지 생성 및 전송
-    val header = s"${Messages.TYPE_RANGE}${Messages.DELIMITER}"
-    val headerBytes = header.getBytes(StandardCharsets.UTF_8)
-    
-    val bodyBuf = java.nio.ByteBuffer.allocate(4 + pivots.size)
-    bodyBuf.putInt(expectedWorkers)
-    bodyBuf.put(pivots.toArray)
-    
-    val packet = headerBytes ++ bodyBuf.array()
-    
-    for (wid <- 1 to expectedWorkers) {
-      net.send(wid, packet)
-    }
-    logger.info(s"Broadcasted ranges (Pivots: $numPivots)")
   }
 }
