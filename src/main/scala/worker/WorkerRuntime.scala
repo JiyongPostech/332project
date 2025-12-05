@@ -5,11 +5,11 @@ import network.NetworkService
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
-import scala.collection.mutable.ArrayBuffer
+import java.util.Arrays
+import scala.collection.mutable.{ArrayBuffer, Map => MutableMap}
 
 class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outputDir: File, masterId: Int, masterHost: String, masterPort: Int) {
   
-  // [중요] ID가 할당될 때까지 기다리기 위한 동기화 도구
   private val idLatch = new java.util.concurrent.CountDownLatch(1)
 
   private val sorter = new DataSorter(new File(outputDir, "tmp"))
@@ -38,12 +38,11 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
       val headerStr = if (payload.length >= 50) new String(payload.take(50), StandardCharsets.UTF_8) else new String(payload, StandardCharsets.UTF_8)
       
       if (senderId == masterId) {
-        // [중요] 마스터가 보낸 ID 할당 응답 처리
         if (headerStr.startsWith(Messages.TYPE_REGISTER_RESPONSE)) {
            val newId = headerStr.trim.split(Messages.DELIMITER)(1).toInt
            this.id = newId
            println(s"[WorkerRuntime] Assigned ID: $id")
-           idLatch.countDown() // 대기 해제 -> sendSamples 실행됨
+           idLatch.countDown() 
         }
         else if (headerStr.startsWith(Messages.TYPE_RANGE)) {
            handleKeyRange(payload, headerStr)
@@ -53,14 +52,24 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
         }
       } else {
         if (headerStr.startsWith(Messages.TYPE_FIN)) handleFin(senderId)
-        else if (payload.length == Record.SIZE) sorter.addRecord(Record(payload))
+        else {
+          // 배치(Batch) 데이터 수신 처리
+          if (payload.length > 0 && payload.length % Record.SIZE == 0) {
+             var offset = 0
+             while (offset < payload.length) {
+                // 100바이트씩 잘라서 처리
+                val recBytes = Arrays.copyOfRange(payload, offset, offset + Record.SIZE)
+                sorter.addRecord(Record(recBytes))
+                offset += Record.SIZE
+             }
+          }
+        }
       }
     }
     
     println(s"[Worker] Connecting to Master ($masterHost:$masterPort)...")
     net.connect(masterHost, masterPort)
     
-    // [중요] ID 받을 때까지 여기서 멈춤 (Blocking)
     println("[Worker] Waiting for ID assignment from Master...")
     idLatch.await()
     println(s"[Worker] ID Assigned: $id. Starting pipeline.")
@@ -73,7 +82,6 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
     println(s"[Worker $id] Sampling data...")
     val samples = new ArrayBuffer[Byte]()
     
-    // 파일/폴더 구분 처리 (NPE 방지)
     inputDirs.foreach { dir =>
        if(dir.exists()) {
          val files = if (dir.isDirectory) dir.listFiles().filter(_.isFile) else Array(dir)
@@ -116,7 +124,11 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
   }
 
   private def startShuffle(): Unit = {
-    println(s"[Worker $id] Starting Shuffle (Streaming)...")
+    println(s"[Worker $id] Starting Shuffle (Batching Enabled)...")
+    
+    // 각 타겟 워커별 전송 버퍼 (Batching Buffer)
+    val sendBuffers = MutableMap[Int, ArrayBuffer[Byte]]()
+    val BATCH_SIZE = 64 * 1024 // 64KB 단위로 묶어서 전송
     
     inputDirs.foreach { dir =>
       if(dir.exists()) {
@@ -126,9 +138,26 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
           while (iter.hasNext) {
             val rec = iter.next()
             val targetId = getTargetWorker(rec.key)
-            net.send(targetId, rec.toBytes)
+            
+            // 버퍼에 추가
+            val buf = sendBuffers.getOrElseUpdate(targetId, new ArrayBuffer[Byte](BATCH_SIZE + Record.SIZE))
+            buf ++= rec.toBytes
+            
+            // 버퍼가 차면 전송하고 비움
+            if (buf.size >= BATCH_SIZE) {
+               net.send(targetId, buf.toArray)
+               buf.clear()
+            }
           }
         }
+      }
+    }
+    
+    // 남은 버퍼 모두 전송 (Flush)
+    sendBuffers.foreach { case (tid, buf) =>
+      if (buf.nonEmpty) {
+        net.send(tid, buf.toArray)
+        buf.clear()
       }
     }
     
@@ -159,7 +188,6 @@ class WorkerRuntime(var id: Int, net: NetworkService, inputDirs: Seq[File], outp
       sorter.close() 
       
       if (!outputDir.exists()) outputDir.mkdirs()
-      // [중요] 최종 결과 파일명에 할당받은 ID 사용
       val finalFile = new File(outputDir, s"partition.$id")
       
       merger.merge(sorter.tempFiles.toSeq, finalFile)

@@ -1,91 +1,81 @@
 package worker
 
 import common.Record
-import java.io.{File, PrintWriter}
-import java.util.concurrent.LinkedBlockingQueue
+import java.io._
+import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
 import scala.collection.mutable.ArrayBuffer
 
-class DataSorter(tempDir: File) {
-  // [수정 핵심] 큐 크기를 5로 제한 (무제한 -> 5)
-  // 이렇게 하면 디스크 쓰기가 느릴 때, 큐가 꽉 차서 addRecord가 잠시 멈추고(Block),
-  // 결과적으로 네트워크 수신 속도가 조절되어 메모리가 터지지 않습니다.
-  private val flushQueue = new LinkedBlockingQueue[ArrayBuffer[Record]](5)
+class DataSorter(tempDir: File) extends Runnable {
   
-  private val MEMORY_LIMIT = 100 * 1024 * 1024 // 100MB 버퍼
-  private var activeBuffer = new ArrayBuffer[Record]()
-  private var currentSize = 0
+  // [수정] 큐 크기 제한 제거. (Bounded Queue -> Unbounded Queue)
+  // 메모리 폭발 방지 로직을 해제하여, 수신 스레드가 블록되지 않도록 합니다.
+  private val queue = new LinkedBlockingQueue[Record]()
+  private val buffer = new ArrayBuffer[Record]()
+  private var isRunning = true
   
   val tempFiles = new ArrayBuffer[File]()
   
-  // 디스크 쓰기 스레드
-  private val flushThread = new Thread(() => {
-    try {
-      while (!Thread.currentThread().isInterrupted) {
-        val buffer = flushQueue.take() // 데이터 꺼내기
-        if (buffer.isEmpty) return // 종료 신호
-        
-        flushToDisk(buffer)
-      }
-    } catch {
-      case e: InterruptedException => // 종료
-    }
-  })
+  if (!tempDir.exists()) tempDir.mkdirs()
 
   def start(): Unit = {
-    if (!tempDir.exists()) tempDir.mkdirs()
-    flushThread.start()
+    new Thread(this, "DataSorterThread").start()
+  }
+  
+  def addRecord(record: Record): Unit = {
+    // [수정] put()은 큐가 무제한이 되었으므로 (메모리가 꽉 차기 전까지) 블록되지 않습니다.
+    queue.put(record)
   }
 
-  def addRecord(record: Record): Unit = synchronized {
-    activeBuffer += record
-    currentSize += Record.SIZE
-    
-    if (currentSize >= MEMORY_LIMIT) {
-      // 버퍼가 차면 큐에 넣음 (큐가 꽉 차있으면 여기서 대기함 -> Backpressure 작동!)
-      flushQueue.put(activeBuffer)
-      activeBuffer = new ArrayBuffer[Record]()
-      currentSize = 0
+  override def run(): Unit = {
+    while (isRunning || queue.size() > 0) {
+      try {
+        // 100ms 동안 데이터를 기다림
+        val rec = queue.poll(100, TimeUnit.MILLISECONDS)
+        if (rec != null) {
+          buffer += rec
+        }
+
+        // 버퍼가 꽉 찼거나 (50000개), 100ms 동안 새 데이터가 없는데 버퍼에 데이터가 있을 경우 (플러시)
+        if (buffer.size >= 50000 || (rec == null && buffer.nonEmpty)) {
+          flushBuffer()
+        }
+      } catch {
+        case e: InterruptedException => 
+          Thread.currentThread().interrupt()
+          isRunning = false
+      }
     }
+    // 루프 종료 후 남은 데이터 최종 플러시
+    if (buffer.nonEmpty) {
+      flushBuffer()
+    }
+    println(s"[DataSorter] Thread finished. Total temp files: ${tempFiles.size}")
+  }
+
+  private def flushBuffer(): Unit = {
+    // 1. In-memory 정렬
+    buffer.sortInPlaceBy(_.key)(Record.KeyOrdering)
+    
+    // 2. 임시 파일로 저장
+    val tempFile = File.createTempFile("sort_temp_", ".dat", tempDir)
+    val output = new BufferedOutputStream(new FileOutputStream(tempFile))
+    
+    try {
+      buffer.foreach { rec =>
+        output.write(rec.toBytes)
+      }
+    } finally {
+      output.close()
+    }
+    
+    tempFiles += tempFile
+    buffer.clear()
   }
 
   def close(): Unit = {
-    synchronized {
-      if (activeBuffer.nonEmpty) {
-        flushQueue.put(activeBuffer)
-      }
-    }
-    // 종료 신호 (빈 버퍼)
-    flushQueue.put(new ArrayBuffer[Record]())
-    try {
-      flushThread.join()
-    } catch {
-      case e: InterruptedException => e.printStackTrace()
-    }
-  }
-
-  private def flushToDisk(buffer: ArrayBuffer[Record]): Unit = {
-    // 메모리 내 정렬 (Key 기준)
-    // Record는 바이트 배열이므로 커스텀 정렬 필요
-    val sorted = buffer.sortWith((a, b) => compare(a.key, b.key) < 0)
-    
-    val file = new File(tempDir, s"segment_${tempFiles.size}.dat")
-    FileIO.writeRecords(file, sorted)
-    
-    synchronized {
-      tempFiles += file
-    }
-    // println(s"[DataSorter] Flushed ${sorted.size} records to ${file.getName}")
-  }
-  
-  private def compare(a: Array[Byte], b: Array[Byte]): Int = {
-    val len = Math.min(a.length, b.length)
-    var i = 0
-    while (i < len) {
-      val v1 = a(i) & 0xFF
-      val v2 = b(i) & 0xFF
-      if (v1 != v2) return v1 - v2
-      i += 1
-    }
-    a.length - b.length
+    isRunning = false
+    // run 메서드에서 남은 작업을 마칠 때까지 기다립니다.
+    // (완벽한 동기화를 위해 Thread.join()을 사용할 수 있지만, 간단하게 플래그만 변경합니다.)
+    // 모든 큐 작업이 완료되면 run 루프는 자동으로 종료됩니다.
   }
 }

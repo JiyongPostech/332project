@@ -19,12 +19,11 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
 
   private val peers = TrieMap[Int, InetSocketAddress]()
   private val MASTER_ID = 0
-  
   private val workerIdCounter = new AtomicInteger(1)
 
   // UDP 관련
   private val sendQueue = new LinkedBlockingQueue[(Int, String, Array[Byte])]()
-  // [수정] 재전송 관리를 위해 (targetId, data, lastSentTime, retryCount) 저장
+  // (targetId, data, lastSentTime, retryCount)
   private val unAckedMessages = new ConcurrentHashMap[String, (Int, Array[Byte], Long, Int)]()
   private val udpGroup = new NioEventLoopGroup()
   private var udpChannel: Channel = _
@@ -63,6 +62,7 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
       if (targetId == MASTER_ID) {
         if (masterChannel != null && masterChannel.isActive) sendTcpPacket(masterChannel, data)
       } else if (targetId == myId) {
+        // Loopback: 즉시 처리
         if (appHandler != null) appHandler(myId, data)
       } else {
         val msgId = java.util.UUID.randomUUID().toString
@@ -78,7 +78,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
   }
 
   // --- TCP Logic ---
-
   private def startTcpServer(): Unit = {
     val b = new ServerBootstrap()
     b.group(bossGroup, tcpGroup).channel(classOf[NioServerSocketChannel])
@@ -90,11 +89,9 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
             override def channelRead0(ctx: ChannelHandlerContext, msg: ByteBuf): Unit = {
               val bytes = new Array[Byte](msg.readableBytes())
               msg.readBytes(bytes)
-              
               val str = new String(bytes.take(50), CharsetUtil.UTF_8)
-              if (str.startsWith(TYPE_REGISTER)) {
-                 handleRegister(ctx, str)
-              } else {
+              if (str.startsWith(TYPE_REGISTER)) handleRegister(ctx, str)
+              else {
                  val senderId = getWorkerIdByChannel(ctx.channel())
                  if (senderId != -1 && appHandler != null) appHandler(senderId, bytes)
               }
@@ -112,13 +109,26 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
     val remoteIp = ctx.channel().remoteAddress().asInstanceOf[InetSocketAddress].getAddress.getHostAddress
     
     if (reqId == -1) {
-      reqId = workerIdCounter.getAndIncrement()
+      // [재접속 로직] 기존에 같은 IP로 접속했던 ID가 있는지 확인
+      val existingId = peers.find { case (_, addr) => 
+        addr.getAddress.getHostAddress == remoteIp 
+      }.map(_._1).getOrElse(-1)
+
+      if (existingId != -1) {
+        reqId = existingId
+        println(s"[Master] Worker re-connected from $remoteIp. Reassigning ID: $reqId")
+      } else {
+        reqId = workerIdCounter.getAndIncrement()
+        println(s"[Master] New Worker connected from $remoteIp. Assigning ID: $reqId")
+      }
+      
       val response = s"$TYPE_REGISTER_RESPONSE$DELIMITER$reqId"
       sendTcpPacket(ctx.channel(), response.getBytes(CharsetUtil.UTF_8))
     }
     
     workerChannels.put(reqId, ctx.channel())
     val newPeerAddr = new InetSocketAddress(remoteIp, udpPort)
+    peers.put(reqId, newPeerAddr)
     
     val joinedMsg = s"$TYPE_PEER_JOINED$DELIMITER$reqId$DELIMITER$remoteIp$DELIMITER$udpPort"
     val joinedBytes = joinedMsg.getBytes(CharsetUtil.UTF_8)
@@ -128,10 +138,8 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
     peers.foreach { case (pid, addr) =>
       sb.append(s"$DELIMITER$pid$DELIMITER${addr.getAddress.getHostAddress}$DELIMITER${addr.getPort}")
     }
-    peers.put(reqId, newPeerAddr)
     
     sendTcpPacket(ctx.channel(), sb.toString().getBytes(CharsetUtil.UTF_8))
-    println(s"[Master] Worker $reqId registered ($remoteIp:$udpPort).")
     
     if (appHandler != null) appHandler(reqId, msgStr.getBytes(CharsetUtil.UTF_8))
   }
@@ -148,7 +156,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
               val bytes = new Array[Byte](msg.readableBytes())
               msg.readBytes(bytes)
               val str = new String(bytes.take(100), CharsetUtil.UTF_8)
-              
               if (str.startsWith(TYPE_PEER_LIST)) handlePeerList(new String(bytes, CharsetUtil.UTF_8))
               else if (str.startsWith(TYPE_PEER_JOINED)) handlePeerJoined(new String(bytes, CharsetUtil.UTF_8))
               else if (str.startsWith(TYPE_REGISTER_RESPONSE)) {
@@ -163,7 +170,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
         }
       })
     masterChannel = b.connect(host, port).sync().channel()
-    
     val regMsg = s"$TYPE_REGISTER$DELIMITER-1$DELIMITER$myPort".getBytes(CharsetUtil.UTF_8)
     sendTcpPacket(masterChannel, regMsg)
   }
@@ -202,8 +208,7 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
     -1
   }
 
-  // --- UDP Logic (Reliable with Exponential Backoff) ---
-
+  // --- UDP Logic ---
   private def startUdpServer(): Unit = {
     val b = new Bootstrap()
     b.group(udpGroup).channel(classOf[NioDatagramChannel])
@@ -219,12 +224,11 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
   }
 
   private def startBackgroundThreads(): Unit = {
-    // Sender Thread
+    // [1] Sender Thread
     new Thread(() => {
       while (!Thread.currentThread().isInterrupted) {
         val (targetId, msgId, data) = sendQueue.take()
         if (peers.contains(targetId)) {
-           // [수정] 초기 retryCount = 0 설정
            unAckedMessages.put(msgId, (targetId, data, System.currentTimeMillis(), 0))
            sendRealUdp(targetId, TYPE_DATA, msgId, data)
         } else {
@@ -234,26 +238,23 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
       }
     }, "UDP-Sender").start()
 
-    // Retry Thread (Exponential Backoff 적용)
+    // [2] Retry Thread (Base Timeout 5초 + Exponential Backoff)
     new Thread(() => {
       while (!Thread.currentThread().isInterrupted) {
-        Thread.sleep(100) // 0.1초마다 체크 (정밀도 향상)
+        Thread.sleep(100) 
         val now = System.currentTimeMillis()
         val iter = unAckedMessages.entrySet().iterator()
-        
         while (iter.hasNext) {
           val entry = iter.next()
           val msgId = entry.getKey
           val (targetId, data, lastSent, retryCount) = entry.getValue
           
-          // [핵심] 지수 백오프 계산: 1초 * 2^retryCount (최대 60초)
-          // 1회차: 1초, 2회차: 2초, 3회차: 4초 ... 6회차: 32초
-          val backoff = Math.min(1000L * Math.pow(2, retryCount).toLong, 60000L)
+          // [수정] 기본 타임아웃 5초
+          val TIMEOUT_BASE = 5000L
+          val backoff = Math.min(TIMEOUT_BASE * Math.pow(2, retryCount).toLong, 60000L)
           
           if (now - lastSent > backoff) {
-             println(s"[Netty] Resending $msgId to $targetId (Retry #${retryCount + 1}, Interval: ${backoff}ms)")
              sendRealUdp(targetId, TYPE_DATA, msgId, data)
-             // [수정] retryCount 증가 및 마지막 전송 시간 갱신
              unAckedMessages.put(msgId, (targetId, data, now, retryCount + 1))
           }
         }
@@ -287,21 +288,24 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
       
       if (typeStr == TYPE_ACK) {
         unAckedMessages.remove(msgId)
-      } else if (typeStr == TYPE_DATA || typeStr == TYPE_FIN) {
-        // ACK 전송 (지수 백오프와 상관없이 ACK는 즉시 보냄)
+      } 
+      else if (typeStr == TYPE_DATA || typeStr == TYPE_FIN) {
+        // [1] 데이터 처리 (Blocking: 저장될 때까지 대기)
+        val headerLen = thirdColon + 1
+        val payload = new Array[Byte](bytes.length - headerLen)
+        System.arraycopy(bytes, headerLen, payload, 0, payload.length)
+        
+        if (appHandler != null) {
+           appHandler(senderId, payload)
+        }
+
+        // [2] 처리가 완료된 후에만 ACK 전송
         val addr = peers.get(senderId).orNull
         if (addr != null || senderId == myId) {
            val header = s"$TYPE_ACK$DELIMITER$myId$DELIMITER$msgId$DELIMITER"
            udpChannel.writeAndFlush(new DatagramPacket(
              Unpooled.copiedBuffer(header, CharsetUtil.UTF_8), sender))
         }
-
-        // App 전달
-        val headerLen = thirdColon + 1
-        val payload = new Array[Byte](bytes.length - headerLen)
-        System.arraycopy(bytes, headerLen, payload, 0, payload.length)
-        
-        if (appHandler != null) appHandler(senderId, payload)
       }
     }
   }
