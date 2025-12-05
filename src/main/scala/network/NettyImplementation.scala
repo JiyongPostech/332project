@@ -22,13 +22,14 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
   private val MASTER_ID = 0
   private val workerIdCounter = new AtomicInteger(1)
 
-  // UDP
   private val sendQueue = new LinkedBlockingQueue[(Int, String, Array[Byte])]()
   private val unAckedMessages = new ConcurrentHashMap[String, (Int, Array[Byte], Long, Int)]()
+  // 중복 메시지 수신 방지 (Exactly-Once)
+  private val receivedMsgIds = java.util.Collections.newSetFromMap(new ConcurrentHashMap[String, java.lang.Boolean]())
+
   private val udpGroup = new NioEventLoopGroup()
   private var udpChannel: Channel = _
 
-  // TCP
   private val tcpGroup = new NioEventLoopGroup()
   private val bossGroup = new NioEventLoopGroup()
   private var tcpChannel: Channel = _             
@@ -39,7 +40,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
 
   override def bind(handler: (Int, Array[Byte]) => Unit): Unit = {
     this.appHandler = handler
-    
     if (myId == MASTER_ID) {
       startTcpServer()
       Logger.info(s"[Netty] Master bound to TCP port $myPort")
@@ -65,6 +65,8 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
         if (appHandler != null) appHandler(myId, data)
       } else {
         val msgId = java.util.UUID.randomUUID().toString
+        // Race Condition 방지: 큐에 넣기 전에 unAcked에 먼저 등록
+        unAckedMessages.put(msgId, (targetId, data, 0L, 0))
         sendQueue.put((targetId, msgId, data))
       }
     }
@@ -75,6 +77,9 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
     tcpGroup.shutdownGracefully()
     bossGroup.shutdownGracefully()
   }
+
+  override def hasPendingMessages(): Boolean = !sendQueue.isEmpty || !unAckedMessages.isEmpty
+  override def getPendingCount(): Int = sendQueue.size() + unAckedMessages.size()
 
   // --- TCP Logic ---
   private def startTcpServer(): Unit = {
@@ -112,37 +117,19 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
         addr.getAddress.getHostAddress == remoteIp 
       }.map(_._1).getOrElse(-1)
 
-      if (existingId != -1) {
-        reqId = existingId
-        Logger.info(s"[Master] Worker re-connected from $remoteIp. Reassigning ID: $reqId")
-      } else {
-        reqId = workerIdCounter.getAndIncrement()
-        Logger.info(s"[Master] New Worker connected from $remoteIp. Assigning ID: $reqId")
-      }
-      
+      if (existingId != -1) reqId = existingId else reqId = workerIdCounter.getAndIncrement()
       val response = s"$TYPE_REGISTER_RESPONSE$DELIMITER$reqId"
       sendTcpPacket(ctx.channel(), response.getBytes(CharsetUtil.UTF_8))
     }
     
     workerChannels.put(reqId, ctx.channel())
-    val newPeerAddr = new InetSocketAddress(remoteIp, udpPort)
-    peers.put(reqId, newPeerAddr)
-    
-    val joinedMsg = s"$TYPE_PEER_JOINED$DELIMITER$reqId$DELIMITER$remoteIp$DELIMITER$udpPort"
-    val joinedBytes = joinedMsg.getBytes(CharsetUtil.UTF_8)
-    workerChannels.forEach { (id, c) => if (id != reqId && c.isActive) sendTcpPacket(c, joinedBytes) }
-
+    peers.put(reqId, new InetSocketAddress(remoteIp, udpPort))
+    val joinedMsg = s"$TYPE_PEER_JOINED$DELIMITER$reqId$DELIMITER$remoteIp$DELIMITER$udpPort".getBytes(CharsetUtil.UTF_8)
+    workerChannels.forEach { (id, c) => if (id != reqId && c.isActive) sendTcpPacket(c, joinedMsg) }
     val sb = new StringBuilder(TYPE_PEER_LIST)
-    peers.foreach { case (pid, addr) =>
-      sb.append(s"$DELIMITER$pid$DELIMITER${addr.getAddress.getHostAddress}$DELIMITER${addr.getPort}")
-    }
-    
+    peers.foreach { case (pid, addr) => sb.append(s"$DELIMITER$pid$DELIMITER${addr.getAddress.getHostAddress}$DELIMITER${addr.getPort}") }
     sendTcpPacket(ctx.channel(), sb.toString().getBytes(CharsetUtil.UTF_8))
-    
-    if (appHandler != null) {
-      val msgWithIp = s"$msgStr$DELIMITER$remoteIp"
-      appHandler(reqId, msgWithIp.getBytes(CharsetUtil.UTF_8))
-    }
+    if (appHandler != null) appHandler(reqId, s"$msgStr$DELIMITER$remoteIp".getBytes(CharsetUtil.UTF_8))
   }
 
   private def startTcpClient(host: String, port: Int): Unit = {
@@ -160,51 +147,37 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
               if (str.startsWith(TYPE_PEER_LIST)) handlePeerList(new String(bytes, CharsetUtil.UTF_8))
               else if (str.startsWith(TYPE_PEER_JOINED)) handlePeerJoined(new String(bytes, CharsetUtil.UTF_8))
               else if (str.startsWith(TYPE_REGISTER_RESPONSE)) {
-                val newId = str.trim.split(DELIMITER)(1).toInt
-                NettyImplementation.this.myId = newId
+                NettyImplementation.this.myId = str.trim.split(DELIMITER)(1).toInt
                 if (appHandler != null) appHandler(MASTER_ID, bytes)
-              }
-              else if (appHandler != null) appHandler(MASTER_ID, bytes)
+              } else if (appHandler != null) appHandler(MASTER_ID, bytes)
             }
           })
         }
       })
     masterChannel = b.connect(host, port).sync().channel()
-    val regMsg = s"$TYPE_REGISTER$DELIMITER-1$DELIMITER$myPort".getBytes(CharsetUtil.UTF_8)
-    sendTcpPacket(masterChannel, regMsg)
+    sendTcpPacket(masterChannel, s"$TYPE_REGISTER$DELIMITER-1$DELIMITER$myPort".getBytes(CharsetUtil.UTF_8))
   }
 
   private def handlePeerList(msg: String): Unit = {
     val parts = msg.trim.split(DELIMITER)
     var i = 1
     while (i < parts.length - 2) {
-      val pid = parts(i).toInt
-      val pip = parts(i+1)
-      val pport = parts(i+2).toInt
-      peers.put(pid, new InetSocketAddress(pip, pport))
+      peers.put(parts(i).toInt, new InetSocketAddress(parts(i+1), parts(i+2).toInt))
       i += 3
     }
   }
 
   private def handlePeerJoined(msg: String): Unit = {
     val parts = msg.trim.split(DELIMITER)
-    val pid = parts(1).toInt
-    val pip = parts(2)
-    val pport = parts(3).toInt
-    peers.put(pid, new InetSocketAddress(pip, pport))
-    Logger.info(s"Peer $pid joined.")
+    peers.put(parts(1).toInt, new InetSocketAddress(parts(2), parts(3).toInt))
+    Logger.info(s"Peer ${parts(1)} joined.")
   }
 
-  private def sendTcpPacket(ch: Channel, data: Array[Byte]): Unit = {
-    ch.writeAndFlush(Unpooled.copiedBuffer(data))
-  }
+  private def sendTcpPacket(ch: Channel, data: Array[Byte]): Unit = ch.writeAndFlush(Unpooled.copiedBuffer(data))
   
   private def getWorkerIdByChannel(ch: Channel): Int = {
     val iter = workerChannels.entrySet().iterator()
-    while(iter.hasNext) {
-      val entry = iter.next()
-      if (entry.getValue == ch) return entry.getKey
-    }
+    while(iter.hasNext) { val entry = iter.next(); if (entry.getValue == ch) return entry.getKey }
     -1
   }
 
@@ -212,6 +185,7 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
   private def startUdpServer(): Unit = {
     val b = new Bootstrap()
     b.group(udpGroup).channel(classOf[NioDatagramChannel])
+      .option(ChannelOption.RCVBUF_ALLOCATOR, new FixedRecvByteBufAllocator(65535))
       .handler(new SimpleChannelInboundHandler[DatagramPacket] {
         override def channelRead0(ctx: ChannelHandlerContext, packet: DatagramPacket): Unit = {
           val content = packet.content()
@@ -225,37 +199,47 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
 
   private def startBackgroundThreads(): Unit = {
     new Thread(() => {
-      while (!Thread.currentThread().isInterrupted) {
-        val (targetId, msgId, data) = sendQueue.take()
-        if (peers.contains(targetId)) {
-           unAckedMessages.put(msgId, (targetId, data, System.currentTimeMillis(), 0))
-           sendRealUdp(targetId, TYPE_DATA, msgId, data)
-        } else {
-           Thread.sleep(500)
-           sendQueue.put((targetId, msgId, data))
+      try {
+        while (!Thread.currentThread().isInterrupted) {
+          val (targetId, msgId, data) = sendQueue.take()
+          if (peers.contains(targetId)) {
+             unAckedMessages.put(msgId, (targetId, data, System.currentTimeMillis(), 0))
+             sendRealUdp(targetId, TYPE_DATA, msgId, data)
+          } else {
+             unAckedMessages.remove(msgId)
+             Thread.sleep(500)
+             val nextMsgId = java.util.UUID.randomUUID().toString
+             unAckedMessages.put(nextMsgId, (targetId, data, 0L, 0))
+             sendQueue.put((targetId, nextMsgId, data))
+          }
         }
-      }
+      } catch { case _: Exception => }
     }, "UDP-Sender").start()
 
     new Thread(() => {
-      while (!Thread.currentThread().isInterrupted) {
-        Thread.sleep(100) 
-        val now = System.currentTimeMillis()
-        val iter = unAckedMessages.entrySet().iterator()
-        while (iter.hasNext) {
-          val entry = iter.next()
-          val msgId = entry.getKey
-          val (targetId, data, lastSent, retryCount) = entry.getValue
-          
-          val TIMEOUT_BASE = 5000L
-          val backoff = Math.min(TIMEOUT_BASE * Math.pow(2, retryCount).toLong, 60000L)
-          
-          if (now - lastSent > backoff) {
-             sendRealUdp(targetId, TYPE_DATA, msgId, data)
-             unAckedMessages.put(msgId, (targetId, data, now, retryCount + 1))
+      try {
+        while (!Thread.currentThread().isInterrupted) {
+          Thread.sleep(50) 
+          val now = System.currentTimeMillis()
+          val iter = unAckedMessages.entrySet().iterator()
+          while (iter.hasNext) {
+            val entry = iter.next()
+            val msgId = entry.getKey
+            val (targetId, data, lastSent, retryCount) = entry.getValue
+            
+            if (lastSent > 0) {
+                val TIMEOUT_BASE = 300L 
+                val MAX_BACKOFF = 3000L
+                val backoff = Math.min(TIMEOUT_BASE * Math.pow(1.5, retryCount).toLong, MAX_BACKOFF)
+                if (now - lastSent > backoff) {
+                   // println 제거됨 (재전송은 조용히 수행)
+                   sendRealUdp(targetId, TYPE_DATA, msgId, data)
+                   unAckedMessages.put(msgId, (targetId, data, now, retryCount + 1))
+                }
+            }
           }
         }
-      }
+      } catch { case _: Exception => }
     }, "UDP-Retry").start()
   }
 
@@ -272,27 +256,44 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
   }
 
   private def handleUdpPacket(sender: InetSocketAddress, bytes: Array[Byte]): Unit = {
-    val str = new String(bytes.take(100), CharsetUtil.UTF_8)
-    val firstColon = str.indexOf(DELIMITER)
-    val secondColon = str.indexOf(DELIMITER, firstColon + 1)
-    val thirdColon  = str.indexOf(DELIMITER, secondColon + 1)
-    
+    var firstColon = -1
+    var secondColon = -1
+    var thirdColon = -1
+    val LIMIT = Math.min(100, bytes.length)
+    var i = 0
+    while (i < LIMIT && thirdColon == -1) {
+      if (bytes(i) == 58) { 
+        if (firstColon == -1) firstColon = i
+        else if (secondColon == -1) secondColon = i
+        else thirdColon = i
+      }
+      i += 1
+    }
+
     if (firstColon > 0 && secondColon > 0 && thirdColon > 0) {
-      val typeStr = str.substring(0, firstColon)
-      val senderIdStr = str.substring(firstColon + 1, secondColon)
-      val msgId = str.substring(secondColon + 1, thirdColon)
+      val typeStr = new String(bytes, 0, firstColon, CharsetUtil.UTF_8)
+      val senderIdStr = new String(bytes, firstColon + 1, secondColon - firstColon - 1, CharsetUtil.UTF_8)
+      val msgId = new String(bytes, secondColon + 1, thirdColon - secondColon - 1, CharsetUtil.UTF_8)
       val senderId = senderIdStr.toInt
       
       if (typeStr == TYPE_ACK) {
-        unAckedMessages.remove(msgId)
+        if (unAckedMessages.containsKey(msgId)) {
+           // println 제거됨 (ACK 수신 확인)
+           unAckedMessages.remove(msgId)
+        }
       } 
       else if (typeStr == TYPE_DATA || typeStr == TYPE_FIN) {
         val headerLen = thirdColon + 1
-        val payload = new Array[Byte](bytes.length - headerLen)
-        System.arraycopy(bytes, headerLen, payload, 0, payload.length)
+        val payloadLen = bytes.length - headerLen
         
-        if (appHandler != null) {
-           appHandler(senderId, payload)
+        // 중복 제거 및 데이터 처리
+        if (!receivedMsgIds.contains(msgId)) {
+            receivedMsgIds.add(msgId)
+            val payload = new Array[Byte](payloadLen)
+            System.arraycopy(bytes, headerLen, payload, 0, payloadLen)
+            
+            // println 제거됨 (데이터 수신 확인)
+            if (appHandler != null) appHandler(senderId, payload)
         }
 
         val addr = peers.get(senderId).orNull
