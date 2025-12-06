@@ -24,7 +24,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
 
   private val sendQueue = new LinkedBlockingQueue[(Int, String, Array[Byte])]()
   private val unAckedMessages = new ConcurrentHashMap[String, (Int, Array[Byte], Long, Int)]()
-  // 중복 메시지 수신 방지 (Exactly-Once)
   private val receivedMsgIds = java.util.Collections.newSetFromMap(new ConcurrentHashMap[String, java.lang.Boolean]())
 
   private val udpGroup = new NioEventLoopGroup()
@@ -51,7 +50,17 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
   }
 
   override def connect(masterHost: String, masterPort: Int): Unit = {
-    if (myId != MASTER_ID) startTcpClient(masterHost, masterPort)
+    if (myId != MASTER_ID) {
+      try {
+        startTcpClient(masterHost, masterPort)
+      } catch {
+        case e: Exception =>
+          Logger.info(s"[Error] Failed to connect to Master at $masterHost:$masterPort. Is Master running?")
+          // Allow the caller to handle the exit, or just return. 
+          // But throwing it up is better for Launcher to catch.
+          throw e 
+      }
+    }
   }
 
   override def send(targetId: Int, data: Array[Byte]): Unit = {
@@ -60,12 +69,16 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
       if (ch != null && ch.isActive) sendTcpPacket(ch, data)
     } else {
       if (targetId == MASTER_ID) {
-        if (masterChannel != null && masterChannel.isActive) sendTcpPacket(masterChannel, data)
+        // [Fix] Check connection before sending to avoid errors if Master died
+        if (masterChannel != null && masterChannel.isActive) {
+          sendTcpPacket(masterChannel, data)
+        } else {
+          Logger.info("[Netty] Cannot send to Master (Connection closed).")
+        }
       } else if (targetId == myId) {
         if (appHandler != null) appHandler(myId, data)
       } else {
         val msgId = java.util.UUID.randomUUID().toString
-        // Race Condition 방지: 큐에 넣기 전에 unAcked에 먼저 등록
         unAckedMessages.put(msgId, (targetId, data, 0L, 0))
         sendQueue.put((targetId, msgId, data))
       }
@@ -121,7 +134,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
       val response = s"$TYPE_REGISTER_RESPONSE$DELIMITER$reqId"
       sendTcpPacket(ctx.channel(), response.getBytes(CharsetUtil.UTF_8))
     }
-    
     workerChannels.put(reqId, ctx.channel())
     peers.put(reqId, new InetSocketAddress(remoteIp, udpPort))
     val joinedMsg = s"$TYPE_PEER_JOINED$DELIMITER$reqId$DELIMITER$remoteIp$DELIMITER$udpPort".getBytes(CharsetUtil.UTF_8)
@@ -232,7 +244,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
                 val MAX_BACKOFF = 3000L
                 val backoff = Math.min(TIMEOUT_BASE * Math.pow(1.5, retryCount).toLong, MAX_BACKOFF)
                 if (now - lastSent > backoff) {
-                   // println 제거됨 (재전송은 조용히 수행)
                    sendRealUdp(targetId, TYPE_DATA, msgId, data)
                    unAckedMessages.put(msgId, (targetId, data, now, retryCount + 1))
                 }
@@ -278,7 +289,6 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
       
       if (typeStr == TYPE_ACK) {
         if (unAckedMessages.containsKey(msgId)) {
-           // println 제거됨 (ACK 수신 확인)
            unAckedMessages.remove(msgId)
         }
       } 
@@ -286,13 +296,10 @@ class NettyImplementation(var myId: Int, myPort: Int) extends NetworkService {
         val headerLen = thirdColon + 1
         val payloadLen = bytes.length - headerLen
         
-        // 중복 제거 및 데이터 처리
         if (!receivedMsgIds.contains(msgId)) {
             receivedMsgIds.add(msgId)
             val payload = new Array[Byte](payloadLen)
             System.arraycopy(bytes, headerLen, payload, 0, payloadLen)
-            
-            // println 제거됨 (데이터 수신 확인)
             if (appHandler != null) appHandler(senderId, payload)
         }
 

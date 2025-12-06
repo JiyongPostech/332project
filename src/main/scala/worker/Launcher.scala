@@ -7,7 +7,6 @@ import scala.util.Random
 
 object Launcher {
   def main(args: Array[String]): Unit = {
-    // 워커 로그 파일 시작
     Logger.init("worker.log")
     Logger.info(s"Worker started with args: ${args.mkString(" ")}")
 
@@ -59,12 +58,20 @@ object Launcher {
     val net = new NettyImplementation(id, myPort)
     val runtime = new WorkerRuntime(id, net, inputDirs, outputDir, 0, masterHost, masterPort)
     
-    runtime.start()
-
     try {
+      runtime.start()
       Thread.currentThread().join()
     } catch {
-      case e: InterruptedException => e.printStackTrace()
+      // [수정] 접근 불가능한 Netty 내부 예외 대신 부모 클래스인 ConnectException으로 처리
+      case e: java.net.ConnectException =>
+        println(s"Error: Could not connect to Master at $masterHost:$masterPort (Connection refused).")
+        Logger.info(s"Error: Could not connect to Master at $masterHost:$masterPort (Connection refused).")
+        System.exit(1)
+      case e: InterruptedException => 
+        e.printStackTrace()
+      case e: Exception =>
+        println(s"Error: Unexpected error: ${e.getMessage}")
+        e.printStackTrace()
     } finally {
       Logger.close()
     }
