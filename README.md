@@ -72,6 +72,31 @@ Milestone #5: 80%: Master의 샘플 수집 → pivot 계산 → RANGE 배포 →
 Milestone #6: 20%: 기본 유틸(ValidateSort, InspectData)은 준비 완료 체계적인 테스트 플랜, fault 시나리오, 결과 정리 작업이 본격 과제  
 
 ### Week 8 Project deadline (Dec 7 Sunday, 11:59pm)
+### Week 8
+
+| Member | Task | Next Steps |
+| --- | --- | --- |
+| ALL | Completed an end-to-end script that runs MakeData → master/workers → ValidateSort and wrote a basic execution guide. Verified that the full pipeline works from sampling to final output on small-size datasets only, because server issues prevented running larger-scale experiments.                                                                                                                                                                    | Prepare the final presentation and demo together: finalize slides, polish the live demo flow using the small-size dataset scenario, and rehearse as a team while adjusting timing and roles. |
+| GanghyeonAn | Re-checked the actual code flow with Record/MakeData/ValidateSort and confirmed that the implemented pivot/partition strategy matches the design. Updated the README with a concise overview of the data format, full pipeline, directory structure, and validation tools (ValidateSort, InspectData), including simple usage examples.                                                                                                                    | Prepare the final presentation and demo together: finalize slides, polish the live demo flow using the small-size dataset scenario, and rehearse as a team while adjusting timing and roles. |
+| JiyongShin  | Finalized integration between the Netty network layer (REGISTER, SAMPLE, RANGE, DONE, ALL_DONE) and WorkerRuntime. Standardized log formats so that the current phase of the pipeline is immediately visible from logs. Designed and executed simple fault scenarios (e.g., killing a worker) and observed the resulting behavior and log patterns.                                                                                                  | Prepare the final presentation and demo together: finalize slides, polish the live demo flow using the small-size dataset scenario, and rehearse as a team while adjusting timing and roles. |
+| SuminPark   | Completed worker core logic: DataSorter (run generation for external sort), DiskMerger (merge), FileIO, and WorkerRuntime (sample collection, RANGE handling, shuffle, local sort, DONE reporting), plus `worker.Launcher` argument handling. Tuned key parameters (e.g., buffer sizes) and added basic error handling and sanity checks for input/output paths. Verified correctness on small-size datasets using `ValidateSort` and `InspectData`. | Prepare the final presentation and demo together: finalize slides, polish the live demo flow using the small-size dataset scenario, and rehearse as a team while adjusting timing and roles. |
+
+**Milestone #3: 100%**
+
+* The designed master–worker pipeline is fully reflected in code and scripts. Documentation (README + basic execution guide) is in place, so the design phase is effectively complete.
+
+**Milestone #4: 100%**
+
+* Local sort, partitioning, disk merge, and worker-side networking are fully implemented with parameter tuning and basic error handling. The system is stable enough for small-scale end-to-end runs.
+
+**Milestone #5: 100%**
+
+* Implemented an end-to-end flow from master sampling → pivot computation → `RANGE` distribution → worker `DONE`/`ALL_DONE` handling, wrapped in runnable scripts. End-to-end behavior has been confirmed **on small-size datasets due to server issues**; large-scale stress tests could not be executed.
+
+**Milestone #6: 60%**
+
+* Core utilities (`ValidateSort`, `InspectData`) are in use for correctness checks, and step-by-step logs plus simple fault scenarios have been tested. Remaining work focuses on more systematic performance/scale evaluation (once servers allow larger runs) and organizing these results into final presentation materials (plots, tables, and summaries).
+
 ### Week 9 Final presentation
 
 ## Milestones
